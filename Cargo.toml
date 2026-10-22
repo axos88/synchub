@@ -1,0 +1,15 @@
+[package]
+name = "sttools"
+version = "0.1.0"
+edition = "2024"
+description = "Syncthing helpers: move a synced directory, push a directory into a share, ignore what git ignores"
+repository = "https://github.com/axos88/sttools"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls"] }
+roxmltree = "0.21.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
