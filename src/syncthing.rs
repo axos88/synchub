@@ -1,188 +1,123 @@
-//! The local Syncthing instance, over its REST API.
+//! Where this device's Syncthing is: the options saying so (`Connection`),
+//! or else its config.xml.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::thread::sleep;
-use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use reqwest::Method;
-use reqwest::blocking::{Client as Http, RequestBuilder, Response};
-use serde::Deserialize;
-use serde::de::DeserializeOwned;
-use serde_json::Value;
 
 use crate::paths;
 
 /// How to reach Syncthing.
 #[derive(clap::Args)]
 pub struct Connection {
-    /// Syncthing's GUI/API address, e.g. 127.0.0.1:8384 [default: from config.xml]
+    /// Syncthing's GUI/API address, e.g. 127.0.0.1:8384, or a Unix socket: unix:///path (unixs:// with TLS) [default: from config.xml]
     #[arg(long, env = "STGUIADDRESS", global = true)]
-    gui_address: Option<String>,
+    pub gui_address: Option<String>,
     /// Syncthing's API key [default: from config.xml]
     #[arg(long, env = "STGUIAPIKEY", global = true, hide_env_values = true)]
-    api_key: Option<String>,
+    pub api_key: Option<String>,
     /// Syncthing's configuration directory, the one holding config.xml [default: Syncthing's default]
     #[arg(long, env = "STHOMEDIR", global = true)]
-    home: Option<PathBuf>,
+    pub config_dir: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Folder {
-    pub id: String,
-    pub label: String,
-    pub path: String,
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub paused: bool,
-    pub send_ownership: bool,
-    pub sync_ownership: bool,
+/// Where Syncthing's GUI/API listens, and its API key.
+pub struct GuiConfig {
+    /// host:port, a URL, or a Unix socket: a path, or unix:// (unixs:// with TLS) and one.
+    pub address: String,
+    pub api_key: String,
+    pub tls: bool,
 }
 
-impl Folder {
-    pub fn local_path(&self) -> PathBuf {
-        paths::canon(&paths::expand_tilde(&self.path))
-    }
+/// Where a Syncthing's API takes requests.
+pub struct Endpoint {
+    /// What the requests' URLs start with; over a socket only its scheme counts.
+    pub base: String,
+    /// The Unix socket the requests go through, if it listens on one.
+    pub socket: Option<PathBuf>,
+}
 
-    pub fn name(&self) -> String {
-        if self.label.is_empty() {
-            self.id.clone()
-        } else {
-            format!("{} ({})", self.label, self.id)
+impl Endpoint {
+    /// Where it is, for people: its URL, or its socket's.
+    pub fn address(&self) -> String {
+        match &self.socket {
+            Some(path) if self.base.starts_with("https:") => format!("unixs://{}", path.display()),
+            Some(path) => format!("unix://{}", path.display()),
+            None => self.base.clone(),
         }
     }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderStatus {
-    pub state: String,
-    #[serde(default)]
-    pub error: String,
-    pub local_files: u64,
+/// The GUI/API's address and key from `connection`, the rest from Syncthing's
+/// config.xml - which is read only if something is missing.
+pub fn gui_config(connection: &Connection) -> Result<GuiConfig> {
+    if let (Some(address), Some(api_key)) = (&connection.gui_address, &connection.api_key) {
+        return Ok(GuiConfig {
+            address: address.clone(),
+            api_key: api_key.clone(),
+            tls: false,
+        });
+    }
+    let gui = read_gui_config(&config_file(connection.config_dir.as_deref())?)?;
+    Ok(GuiConfig {
+        address: connection.gui_address.clone().unwrap_or(gui.address),
+        api_key: connection.api_key.clone().unwrap_or(gui.api_key),
+        tls: gui.tls,
+    })
 }
 
-pub struct Client {
-    http: Http,
-    base: String,
-    api_key: String,
-}
-
-impl Client {
-    pub fn connect(connection: &Connection) -> Result<Self> {
-        let (address, api_key, tls) = match (&connection.gui_address, &connection.api_key) {
-            (Some(address), Some(key)) => (address.clone(), key.clone(), false),
-            _ => {
-                let file = config_file(connection.home.as_deref())?;
-                let gui = read_gui_config(&file)?;
-                (
-                    connection.gui_address.clone().unwrap_or(gui.address),
-                    connection.api_key.clone().unwrap_or(gui.api_key),
-                    gui.tls,
-                )
-            }
+impl GuiConfig {
+    /// Where the API takes requests. Its address is read as Syncthing reads
+    /// it (lib/config/guiconfiguration.go).
+    pub fn endpoint(&self) -> Result<Endpoint> {
+        let address = self.address.as_str();
+        let socket = match address.split_once("://") {
+            Some(("unix", path)) => Some((path, false)),
+            Some(("unixs", path)) => Some((path, true)),
+            None if address.starts_with('/') => Some((address, self.tls)),
+            _ => None,
         };
-        // Syncthing's GUI certificate is self-signed.
-        let http = Http::builder()
-            .timeout(None)
-            .danger_accept_invalid_certs(true)
-            .build()?;
-        let client = Client {
-            http,
-            base: base_url(&address, tls)?,
-            api_key,
+        if let Some((path, tls)) = socket {
+            if !cfg!(unix) {
+                bail!(
+                    "Syncthing's GUI listens on a Unix socket ({address}), which needs a Unix system"
+                );
+            }
+            return Ok(Endpoint {
+                base: format!("{}://localhost", scheme(tls)),
+                socket: Some(PathBuf::from(path)),
+            });
+        }
+        if address.contains("://") {
+            return Ok(Endpoint {
+                base: address.trim_end_matches('/').to_string(),
+                socket: None,
+            });
+        }
+        // Listening everywhere, it's reached on this machine.
+        let address = match address
+            .strip_prefix("0.0.0.0:")
+            .or_else(|| address.strip_prefix("[::]:"))
+            .or_else(|| address.strip_prefix(':'))
+        {
+            Some(port) => format!("127.0.0.1:{port}"),
+            None => address.to_string(),
         };
-        client.get::<Value>("system/ping").with_context(|| {
-            format!("can't reach Syncthing at {} - is it running?", client.base)
-        })?;
-        Ok(client)
-    }
-
-    pub fn folders(&self) -> Result<Vec<Folder>> {
-        self.get("config/folders")
-    }
-
-    /// Changes some of a folder's settings, e.g. `json!({"paused": true})`.
-    pub fn update_folder(&self, id: &str, changes: Value) -> Result<()> {
-        let path = format!("config/folders/{}", encode(id));
-        self.send(self.request(Method::PATCH, &path).json(&changes))?;
-        Ok(())
-    }
-
-    pub fn status(&self, id: &str) -> Result<FolderStatus> {
-        self.get(&format!("db/status?folder={}", encode(id)))
-    }
-
-    /// Scans the folder; returns when the scan is done.
-    pub fn scan(&self, id: &str) -> Result<()> {
-        self.send(self.request(Method::POST, &format!("db/scan?folder={}", encode(id))))?;
-        Ok(())
-    }
-
-    /// "Override Changes" of a send-only folder: this device's files win everywhere.
-    pub fn override_changes(&self, id: &str) -> Result<()> {
-        self.send(self.request(Method::POST, &format!("db/override?folder={}", encode(id))))?;
-        Ok(())
-    }
-
-    /// The error Syncthing found in the folder's ignore patterns, if any.
-    pub fn ignores_error(&self, id: &str) -> Result<Option<String>> {
-        let ignores: Value = self.get(&format!("db/ignores?folder={}", encode(id)))?;
-        Ok(ignores["error"]
-            .as_str()
-            .filter(|e| !e.is_empty())
-            .map(String::from))
-    }
-
-    pub fn wait_idle(&self, id: &str) -> Result<FolderStatus> {
-        let deadline = Instant::now() + Duration::from_secs(3600);
-        loop {
-            if let Ok(status) = self.status(id) {
-                match status.state.as_str() {
-                    "idle" => return Ok(status),
-                    "error" => bail!("folder {id}: {}", status.error),
-                    _ => {}
-                }
-            }
-            if Instant::now() > deadline {
-                bail!("timed out waiting for folder {id} to become idle");
-            }
-            sleep(Duration::from_secs(1));
-        }
-    }
-
-    fn request(&self, method: Method, path: &str) -> RequestBuilder {
-        self.http
-            .request(method, format!("{}/rest/{path}", self.base))
-            .header("X-API-Key", &self.api_key)
-    }
-
-    fn send(&self, request: RequestBuilder) -> Result<Response> {
-        let response = request.send()?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().unwrap_or_default();
-            bail!("Syncthing answered {status}: {}", body.trim());
-        }
-        Ok(response)
-    }
-
-    fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        Ok(self.send(self.request(Method::GET, path))?.json()?)
+        Ok(Endpoint {
+            base: format!("{}://{address}", scheme(self.tls)),
+            socket: None,
+        })
     }
 }
 
-struct GuiConfig {
-    address: String,
-    api_key: String,
-    tls: bool,
+fn scheme(tls: bool) -> &'static str {
+    if tls { "https" } else { "http" }
 }
 
-fn config_file(home: Option<&Path>) -> Result<PathBuf> {
-    let dirs = match home {
-        Some(home) => vec![home.to_path_buf()],
+fn config_file(config_dir: Option<&Path>) -> Result<PathBuf> {
+    let dirs = match config_dir {
+        Some(dir) => vec![dir.to_path_buf()],
         None => std::env::var_os("STCONFDIR")
             .map(PathBuf::from)
             .into_iter()
@@ -195,7 +130,7 @@ fn config_file(home: Option<&Path>) -> Result<PathBuf> {
         .with_context(|| {
             let tried: Vec<_> = dirs.iter().map(|d| d.display().to_string()).collect();
             format!(
-                "no Syncthing config.xml in {}; use --home or --gui-address and --api-key",
+                "no Syncthing config.xml in {}; use --config-dir, or --gui-address and --api-key",
                 tried.join(", ")
             )
         })
@@ -205,6 +140,12 @@ fn default_config_dirs() -> Vec<PathBuf> {
     let home = paths::home();
     if cfg!(target_os = "macos") {
         return vec![home.join("Library/Application Support/Syncthing")];
+    }
+    if cfg!(windows) {
+        let local = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("AppData/Local"));
+        return vec![local.join("Syncthing")];
     }
     let xdg = |var, default: &str| {
         std::env::var_os(var)
@@ -240,76 +181,44 @@ fn read_gui_config(file: &Path) -> Result<GuiConfig> {
     })
 }
 
-fn base_url(address: &str, tls: bool) -> Result<String> {
-    if address.starts_with("unix://") || address.starts_with('/') {
-        bail!(
-            "Syncthing's GUI listens on a unix socket ({address}); pass --gui-address with a TCP address"
-        );
-    }
-    if address.contains("://") {
-        return Ok(address.trim_end_matches('/').to_string());
-    }
-    let address = match address
-        .strip_prefix("0.0.0.0:")
-        .or_else(|| address.strip_prefix("[::]:"))
-        .or_else(|| address.strip_prefix(':'))
-    {
-        Some(port) => format!("127.0.0.1:{port}"),
-        None => address.to_string(),
-    };
-    Ok(format!(
-        "{}://{address}",
-        if tls { "https" } else { "http" }
-    ))
-}
-
-fn encode(value: &str) -> String {
-    value
-        .bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn base_url_maps_wildcard_addresses_to_localhost() {
-        assert_eq!(
-            base_url("0.0.0.0:8384", false).unwrap(),
-            "http://127.0.0.1:8384"
-        );
-        assert_eq!(
-            base_url("[::]:8384", true).unwrap(),
-            "https://127.0.0.1:8384"
-        );
-        assert_eq!(base_url(":8384", false).unwrap(), "http://127.0.0.1:8384");
-        assert_eq!(
-            base_url("127.0.0.1:8384", false).unwrap(),
-            "http://127.0.0.1:8384"
-        );
-        assert_eq!(
-            base_url("https://host:1/", false).unwrap(),
-            "https://host:1"
-        );
-        assert!(base_url("unix:///run/st.sock", false).is_err());
+    fn endpoint(address: &str, tls: bool) -> (String, Option<PathBuf>) {
+        let gui = GuiConfig {
+            address: address.to_string(),
+            api_key: String::new(),
+            tls,
+        };
+        let endpoint = gui.endpoint().unwrap();
+        (endpoint.base, endpoint.socket)
     }
 
     #[test]
-    fn encode_escapes_reserved_characters() {
-        assert_eq!(encode("shy4a-ady3g"), "shy4a-ady3g");
-        assert_eq!(encode("a b/c"), "a%20b%2Fc");
+    fn wildcard_addresses_are_reached_on_localhost() {
+        let base = |address, tls| endpoint(address, tls).0;
+        assert_eq!(base("0.0.0.0:8384", false), "http://127.0.0.1:8384");
+        assert_eq!(base("[::]:8384", true), "https://127.0.0.1:8384");
+        assert_eq!(base(":8384", false), "http://127.0.0.1:8384");
+        assert_eq!(base("127.0.0.1:8384", false), "http://127.0.0.1:8384");
+        assert_eq!(base("https://host:1/", false), "https://host:1");
+    }
+
+    #[test]
+    fn unix_sockets_are_read_as_syncthing_reads_them() {
+        let socket = Some(PathBuf::from("/run/st.sock"));
+        let http = ("http://localhost".to_string(), socket.clone());
+        let https = ("https://localhost".to_string(), socket);
+        assert_eq!(endpoint("/run/st.sock", false), http);
+        assert_eq!(endpoint("/run/st.sock", true), https);
+        assert_eq!(endpoint("unix:///run/st.sock", true), http);
+        assert_eq!(endpoint("unixs:///run/st.sock", false), https);
     }
 
     #[test]
     fn reads_gui_settings() {
-        let dir = std::env::temp_dir().join(format!("sttools-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("synchub-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let file = dir.join("config.xml");
         fs::write(

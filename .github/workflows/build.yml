@@ -1,0 +1,90 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  # Attaching the binaries to the release of a v* tag.
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  build:
+    name: build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux binaries are static (musl), so they run on any distribution.
+          - { name: linux-x86_64, target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { name: linux-x86, target: i686-unknown-linux-musl, os: ubuntu-latest }
+          - { name: linux-arm64, target: aarch64-unknown-linux-musl, os: ubuntu-latest }
+          - { name: macos-x86_64, target: x86_64-apple-darwin, os: macos-latest }
+          - { name: macos-arm64, target: aarch64-apple-darwin, os: macos-latest }
+          - { name: windows-x86_64, target: x86_64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Builds with cross (Docker images with the C toolchain ring needs) where
+      # the target isn't native to the runner, with cargo otherwise.
+      - uses: houseabsolute/actions-rust-cross@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --locked --release
+          strip: true
+      - name: Package
+        shell: bash
+        run: |
+          dir=synchub-${{ matrix.name }}
+          mkdir "$dir"
+          cp README.md LICENSE "$dir/"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/synchub.exe" "$dir/"
+            7z a "$dir.zip" "$dir"
+          else
+            cp "target/${{ matrix.target }}/release/synchub" "$dir/"
+            tar czf "$dir.tar.gz" "$dir"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synchub-${{ matrix.name }}
+          path: synchub-${{ matrix.name }}.*
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: synchub-${{ matrix.name }}.*
+
+  # A "latest" release that always holds the binaries of master's newest commit.
+  latest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Replace the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          # A pre-release, so that proper releases keep GitHub's "Latest" badge.
+          gh release create latest dist/* --prerelease --target "$GITHUB_SHA" \
+            --title "latest (master)" \
+            --notes "Built from master at ${GITHUB_SHA::7}; replaced on every push to master."

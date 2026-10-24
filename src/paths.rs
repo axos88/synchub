@@ -1,9 +1,12 @@
 //! Path helpers shared by the commands.
 
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 pub fn home() -> PathBuf {
     std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -50,6 +53,11 @@ pub fn inside(path: &Path, dir: &Path) -> bool {
     path.starts_with(dir)
 }
 
+/// Whether one of `a` and `b` is the other, or lies inside it.
+pub fn related(a: &Path, b: &Path) -> bool {
+    inside(a, b) || inside(b, a)
+}
+
 /// `path` relative to `base` (which it must be inside), with `/` separators.
 pub fn relative(path: &Path, base: &Path) -> String {
     let rel = path.strip_prefix(base).unwrap_or(path);
@@ -59,18 +67,23 @@ pub fn relative(path: &Path, base: &Path) -> String {
         .join("/")
 }
 
-/// How to write `path` into a folder's config: in `~/` form if the old value used it.
-pub fn config_form(old: &str, path: &Path) -> String {
+pub fn is_empty_dir(dir: &Path) -> io::Result<bool> {
+    Ok(fs::read_dir(dir)?.next().is_none())
+}
+
+/// `path` the way a person would write it: under home in `~/` form,
+/// elsewhere in full.
+pub fn relative_to_home(path: &Path) -> String {
     let home = canon(&home());
-    if old.starts_with('~') && inside(path, &home) {
-        let rel = relative(path, &home);
-        return if rel.is_empty() {
-            "~".to_string()
-        } else {
-            format!("~/{rel}")
-        };
+    if !inside(path, &home) {
+        return path.display().to_string();
     }
-    path.display().to_string()
+    let rel = relative(path, &home);
+    if rel.is_empty() {
+        "~".to_string()
+    } else {
+        format!("~/{rel}")
+    }
 }
 
 #[cfg(test)]
@@ -97,13 +110,17 @@ mod tests {
     }
 
     #[test]
-    fn config_form_follows_the_old_value() {
+    fn related_is_either_way() {
+        let (dir, sub) = (Path::new("/a/b"), Path::new("/a/b/c"));
+        assert!(related(dir, sub) && related(sub, dir) && related(dir, dir));
+        assert!(!related(dir, Path::new("/a/bc")));
+    }
+
+    #[test]
+    fn paths_relative_to_home() {
         let home = canon(&home());
-        assert_eq!(config_form("~/x", &home.join("y/z")), "~/y/z");
-        assert_eq!(
-            config_form("/abs/x", &home.join("y")),
-            home.join("y").display().to_string()
-        );
-        assert_eq!(config_form("~/x", Path::new("/elsewhere")), "/elsewhere");
+        assert_eq!(relative_to_home(&home.join("y/z")), "~/y/z");
+        assert_eq!(relative_to_home(&home), "~");
+        assert_eq!(relative_to_home(Path::new("/elsewhere")), "/elsewhere");
     }
 }

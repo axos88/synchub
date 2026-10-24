@@ -1,23 +1,25 @@
-//! sttools: helpers for Syncthing - move a synced directory, push a directory
-//! into a share, make Syncthing ignore what git ignores.
+//! synchub: helpers for Syncthing - move a synced directory, replace a
+//! share's contents, make Syncthing ignore what git ignores, and choose shares
+//! through a hub.
 
-mod git;
-mod mv;
+mod api;
+mod client;
+mod commands;
+mod device_id;
+mod folder_id;
+mod output;
 mod paths;
 mod prompt;
-mod put;
+mod settings;
+mod side;
 mod syncthing;
 
-use std::ffi::OsString;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 /// Helpers for Syncthing.
-///
-/// Each command also runs under its own name when sttools is started through
-/// a link with that name: syncmv (mv), syncput (put) and stgit (git).
 ///
 /// Syncthing must be running for this user. Its GUI address and API key are
 /// read from its config.xml; use the options below where that doesn't work.
@@ -26,46 +28,31 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(flatten)]
     connection: syncthing::Connection,
+    /// synchub's own settings file, holding the hub's details [default: ~/.config/synchub/config.toml]
+    #[arg(long, env = "SYNCHUB_CONFIG", global = true)]
+    config: Option<PathBuf>,
+    /// Show what would be done, change nothing
+    #[arg(short = 'n', long, global = true)]
+    dry_run: bool,
     #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    Mv(mv::Args),
-    Put(put::Args),
-    Git(git::Args),
-}
-
-/// The command line, with the subcommand filled in when started as syncmv, syncput or stgit.
-fn args() -> Vec<OsString> {
-    let mut args: Vec<OsString> = std::env::args_os().collect();
-    let name = args
-        .first()
-        .and_then(|a| Path::new(a).file_name())
-        .and_then(|n| n.to_str());
-    let subcommand = match name {
-        Some("syncmv") => "mv",
-        Some("syncput") => "put",
-        Some("stgit") => "git",
-        _ => return args,
-    };
-    args[0] = "sttools".into();
-    args.insert(1, subcommand.into());
-    args
+    command: commands::Command,
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse_from(args());
-    let result = syncthing::Client::connect(&cli.connection).and_then(|client| match cli.command {
-        Command::Mv(args) => mv::run(&client, args),
-        Command::Put(args) => put::run(&client, args),
-        Command::Git(args) => git::run(&client, args),
-    });
+    // reqwest is built without a crypto provider: ring builds for every
+    // release target with just a C compiler (aws-lc needs CMake/NASM on some).
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let cli = Cli::parse();
+    settings::init(
+        cli.config.unwrap_or_else(settings::default_path),
+        cli.dry_run,
+    );
+    client::local::init(cli.connection);
+    let result = commands::run(cli.command);
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("sttools: {err:#}");
+            eprintln!("synchub: {err:#}");
             ExitCode::FAILURE
         }
     }
