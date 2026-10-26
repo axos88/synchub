@@ -348,6 +348,15 @@ impl<S> Folder<S> {
             format!("{} ({})", self.label, self.id)
         }
     }
+
+    /// Its label, or its ID when it has none.
+    pub fn label_or_id(&self) -> String {
+        if self.label.is_empty() {
+            self.id.to_string()
+        } else {
+            self.label.clone()
+        }
+    }
 }
 
 impl Folder<Local> {

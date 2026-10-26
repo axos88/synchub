@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 
 use crate::api;
 use crate::client;
+use crate::commands::Arguments;
 use crate::device_id::DeviceId;
 use crate::folder_id::FolderId;
 use crate::side::{Hub, Local};
@@ -18,8 +19,14 @@ use crate::{say, step, warn};
 /// left alone.
 ///
 /// Example: synchub sync
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
 
 pub fn run(_args: Args) -> Result<()> {
     sync()

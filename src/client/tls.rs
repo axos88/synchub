@@ -1,5 +1,6 @@
-//! TLS for the API clients, which accept any certificate: this device's GUI
-//! has a self-signed one, and the hub is verified by its device ID instead.
+//! TLS for the API clients, which accept any certificate: Syncthing's GUI
+//! has a self-signed one. The hub's API is only checked for the device ID it
+//! reports - which tells a wrong address, not an impostor.
 
 use std::sync::Arc;
 

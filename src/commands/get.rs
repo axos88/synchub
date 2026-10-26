@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use crate::client;
+use crate::commands::{Arguments, option};
 use crate::commands::{mv, share};
 use crate::folder_id::FolderId;
 use crate::say;
@@ -18,13 +19,24 @@ use crate::say;
 /// use `synchub share`.
 ///
 /// Example: synchub get Website --path ~/projects/website
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The share: its label or folder ID (`synchub list` shows them)
-    folder: String,
+    pub folder: String,
     /// Where to move it on this device [default: it stays in the folder defaults' directory]
     #[arg(long)]
-    path: Option<PathBuf>,
+    pub path: Option<PathBuf>,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        std::iter::once(self.folder.clone())
+            .chain(option(
+                "--path",
+                self.path.as_ref().map(|path| path.display()),
+            ))
+            .collect()
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

@@ -9,13 +9,122 @@ introduction accurate as the hub logic evolves.
 
 ## Code layout and style
 
-- The commands never open screens: a missing argument is an error.
+- `src/commands/app.rs` + `src/commands/app/`: the app - the `app` command (aliases `ui`, `run`), which
+  `synchub` runs when no command is given - arranged like an Angular app, by what each part is,
+  each in its own module:
+  - `pages/` are whole screens: `main` (the folder screen: `App` - the state, the `Tree` and the
+    log - and its `Window` impl, in `main.rs`; `events` what the keys and the mouse do and the status bar's
+    bindings, `actions` the operations they start - one needing the hub fails, saying
+    why, when the hub can't be used, never skipped silently; Enter/Space's `toggle` picks `share`
+    or `unshare`, which `s` and `u` run directly -, `draw` its layout), `join` (the form and the
+    device ID check - offered when `synchub` starts without a hub), `new_share`;
+  - `components/` are the parts pages are drawn from: `syncthing_info` and `hub_info` (sharing
+    `identicon_panel`), `tree` (the `Tree`: its selection, by `Key`, and its `ClickableList`;
+    Up/Down, the wheel and clicks are its own, the page offers them first; Enter and a double
+    click come back as `TreeResponse::Activated(Key)`, the row's main action, which the page does
+    (`activate`) - what the action keys do stays the page's, the tree only knows the selection;
+    its rows come from the `State` passed in, and `reloaded` keeps the selection), `log`, `dialog` (a `DialogBox`: a
+    title and `Part`s top to bottom - text, prose, lines showing the last that fit, a gap, a
+    field, buttons - chosen by the caller, as a form's fields are; `draw` (`dialog/draw.rs`) sizes
+    the box and says where the field and buttons landed. Built from it: the busy dialog (`operation`'s),
+    and `alert`, `confirm` and `prompt`, like JavaScript's, each in its own module under
+    `dialog/` with its tests. A `Dialog` is a `Window` that also gives its `hot_keys`, and draws
+    only its box: `dialog.popup(page)` runs it above a `Page` (`App` is one), which draws itself
+    beneath it with the dialog's `HotKeys` in its status bar - so a dialog knows nothing of
+    what it's over; a `confirm`'s two buttons are labelled
+    with what they do, e.g. "Remove it" / "Cancel", its title says what it's about, and its
+    focus starts on the no; `prompt` is titled with what it's for, holds a form's text `Field` and
+    OK / Cancel buttons drawn like the confirm's, Tab (or Down/Up) moving the focus between them;
+    Enter in the field presses the chosen button - the last one that had the focus, OK at first.
+    A button with the focus is on yellow; while the field has it, the chosen one is on cyan), `status_bar` (`HotKeys`, a
+    `HotKey` each: the keys, and what they do), `form` (a screen of fields: `Form::new(title)`, then
+    `form.add(field)` per field, which returns a typed `Handle<F>`; submitted, the form ends with
+    `Answers`, read by handle - `answers[label].text()` is a `&TextField`'s - so nothing is read
+    by position or from the wrong kind. The kinds are their own types in `form/field/`
+    (built: `TextField::new().label(…).value(…).placeholder(…).required()`, `DirField::new()
+    .label(…).value(…).marking(…).required()`, `ChecksField::new().label(…).items(…)`; read:
+    `text()`, `path()`, `ticked()` - `ChecksField<K>`'s items are `Check { key, label, ticked }`:
+    shown by label, ticked to start with or not, answered with the keys ticked), each with its
+    logic and tests; the `Field` enum only holds one (a `ChecksField` boxed with its key type
+    hidden, `ChecksKind`, found again by downcasting), forwarding through the `FieldKind` trait - which a dialog's field part takes too,
+    `show` drawing a field in its titled border - and `FormField::of` finds a kind again for a
+    handle. The fields handle their own keys and clicks - a text field edits through a `TextInput` (`form/text_input.rs`:
+    a cursor in characters; Left/Right, Home/End or Ctrl-A/E, Backspace and Delete at it, Ctrl-U
+    clears; long text scrolls to keep the cursor in view) - a directory field (read-only; `marking` gives its browser
+    the Syncthing folders to mark - new-share's does) runs the directory browser - and say
+    whether they took them: an `EventResponse`; the form gets the ones they ignore),
+    `dir_browser` (`target` is the path typed when choosing where to move something),
+    `clickable_list`. Components draw through functions or methods taking the frame
+    (`draw(frame, area, …)`), not ratatui's `Widget` trait - the maintainer's decision
+    (2026-10-26), to keep them uniform: not all of them could be widgets (a focused text field
+    sets the cursor, which needs the frame). A component with state implements `Window` in its own module file, with
+    `events` (what the keys and the mouse do) and `draw` beside it. ratatui keeps nothing of a
+    widget between frames and doesn't hit-test, so a list
+    that takes clicks is a `ClickableList`: it keeps the `ListState`, and where it was last
+    drawn and how many items it had - in `Cell`s, so it's drawn through `&self` (a page is also
+    drawn beneath a dialog, from a shared `&App`; D-15 is to stop drawing changing anything) -
+    and `clicked(&mut self)` gives the `Gesture<usize>` a press makes on an item: its
+    `GestureDetector` makes the gesture where the press landed, and it's mapped to the item
+    there (`gesture.map(|position| self.item_at(position)).transpose()`: no item, no gesture);
+  - beside them, what serves them: `window` (a `Window` is what has the terminal - a page, a
+    form, the directory browser, the main page with a dialog over it - and `window.run()` the
+    one loop (`RunnableWindow`, with a blanket impl for every `Window`, so no window can replace
+    the loop; import it to call `run`): `finished()` ends it without an event, e.g. a worker done; `interval()` redraws
+    one showing work going on without waiting for events; `opened()` runs once before the first
+    draw (a form whose focus starts on an empty directory field opens its browser there - only
+    the browser can fill it - new-share's form starts that way; cancelled, the field stays empty,
+    and a `required()` one keeps the form from being submitted - Enter moves to it - until it's
+    chosen again with Space or a click; moving the focus onto one doesn't open it); `event()` returns `Break` with the result; a window bringing up another runs it in its event handler. `run` takes the window
+    and switches to the full screen unless a window is up already - `window::full_screen`, which
+    `app::run` wraps the loading dialog, the join form and the main page in, so they don't flash
+    the shell in between; the one `Terminal` lives there, so a window drawn over another diffs
+    against what's on the screen. `form::form` and `dir_browser::choose_dir`/`choose_target`
+    return windows, and the caller runs them; `Window::map` changes what a window ends with, and
+    `map_some`/`map_ok` what's inside an `Option`/`Result` it ends with - e.g. join's and
+    new-share's forms are `map_some`'d from their fields to what they ask for, still `None` if
+    cancelled), `state` (what's shown, as facts - e.g. `FolderState`,
+    `DeviceProgress`, `HubApi` - which the components put into words and colours; and the `Log`
+    of the actions' command lines, with its `max_lines`, which `App` keeps beside the `State`,
+    since every reload replaces that;
+    `state/load.rs` reads it),
+    `operation` (`perform`),
+    `gesture` (`Gesture` - `Click`/`DoubleClick` - made of mouse presses by a `GestureDetector`:
+    `add(position)` returns one when a press completes it; a double click's second press comes
+    within half a second, on the same row and a column away at most; a gesture is at a
+    `Position` until a component `map`s it to what's there - `transpose` drops one at
+    nothing),
+    `terminal` (full screen on and off - for `window` only -, key presses, Ctrl-C).
+
+  `App` is defined in `app.rs`; its methods live with the page or service they belong to.
+  The other commands never open screens: a missing argument is an error. The app starts without a
+  state (`App.state` is `None` until the first load: the page draws nothing and takes no events
+  until then, so the components never deal with an unloaded state; the page's code reads it
+  through `App::state()`, or `main::loaded(&self.state)` beside a borrow of the tree - both an
+  error, passed on with `?`, before it's loaded - and the status bar's `hot_keys` is given it) and loads it with
+  `App::reload` - like `r`'s refresh - behind the busy dialog, so the screen appears at once;
+  during a reload, which changes nothing, `q`/Esc/Ctrl-C quit without waiting for a slow hub.
+  A reload failing keeps the state shown, after an alert saying why; the first load failing
+  ends the app with the error.
+  Actions go through `App::perform`, which takes the `commands::Command` the action built, e.g.
+  `Command::Share(share::Args { .. })`, and logs its `Command::command_line()` (only shown,
+  never run) - `Command` names the commands, each `Args` gives its words
+  (`commands::Arguments`, implemented next to it), and a test parses every command's line back
+  with clap into the same `Command`: clap can't turn arguments into a command line itself;
+  `join`'s leaves the API key out, which clap then takes from `SYNCHUB_HUB_API_KEY`), runs the
+  operation and then the reload on a worker thread (`App::in_background`, which returns what
+  the work returned and the lines it reported), and draws one busy dialog for both meanwhile
+  (keys pressed then are dropped). If the operation fails, an alert shows its lines - those
+  before `output::sent()` marked where the reload's start - and the error until its OK button
+  is pressed (`dialog::alert`). Questions come first, in the foreground: the directory browser and
+  forms run as windows over the page (`.run()`, called by the action), and the
+  operation gets what they returned (e.g. the new-share form, then `new::create`). The output capture in
+  `src/output.rs` is global, not per thread - one operation at a time.
 - `src/commands.rs` + `src/commands/`: one module per subcommand (`join`, `list`, `new`, `get`,
   `remove`, `mv`, `overwrite`, `gitignore`), children in a directory beside the module file (never
   `mod.rs`). Each command's operation is a `pub fn` named after it, taking typed values -
   `share::share`, `unshare::unshare`, `mv::move_recursive`, `get::get`, `remove::remove`, `new::create`,
-  `sync::sync`, `gitignore::gitignore`, `overwrite::overwrite`, `join::join_hub`, ...; a command
-  built from others calls theirs (`get` = `share::share` with this device,
+  `sync::sync`, `gitignore::gitignore`, `overwrite::overwrite`, `join::join_hub`, ...; the app calls
+  them, and a command built from others calls theirs (`get` = `share::share` with this device,
   then `mv::move_recursive`) rather than reimplementing them. Each operation does its own dry run.
 - `src/client.rs` + `src/client/`: the two API clients, globals made on first use and kept
   (`once_cell::sync::OnceCell::get_or_try_init` - std's `OnceLock` has no stable fallible
@@ -24,9 +133,10 @@ introduction accurate as the hub logic evolves.
   `Client<S>` and its `ClientBuilder<S>`; `client::local::init` gets the `Connection` options
   first, in `main`). `client::hub()` is the hub's (`client/hub.rs`: `HubClient`, derefs to
   `Client<Hub>`, knows the hub's
-  `id()`): on first use it reads the hub's settings, verifies the hub (sync port certificate, then
-  `HubClient::connect` checks the API's device ID) and runs `commands::convert::convert` - so
-  once per process. Nothing passes the clients around: an operation or helper
+  `id()`): on first use it reads the hub's settings, connects (`HubClient::connect` checks the
+  API reports the saved device ID) and runs `commands::convert::convert` - so
+  once per process; the
+  app's refreshes don't repeat it. Nothing passes the clients around: an operation or helper
   fetches the one it uses (`let local = client::local()?;`). Exceptions, both taking the hub
   as a parameter: `commands::convert::convert`, which runs while `client::hub()` is
   being made (an initializer mustn't use its own cell: it would wait for itself), and `join`, which
@@ -43,10 +153,9 @@ introduction accurate as the hub logic evolves.
   Syncthing's whole configuration is one request (`Client::config()`, `/rest/config`, ~30 KB;
   verified: a `ConfigSaved` event's data is exactly that object): use it wherever more than one
   list is needed, instead of separate `folders()`/`devices()` calls.
-- There's no `hub` module: what's about the hub lives with what it works on. Verifying it by
-  device ID is `HubClient`'s (`probe_device_id`, an associated function: `join` uses it before
-  there's a client); where a new folder goes on it is `Config<Hub>::new_folder_path`; where it
-  listens for devices by default is `settings::default_sync_address`; moving direct shares over
+- There's no `hub` module: what's about the hub lives with what it works on. Checking its
+  device ID is `HubClient::connect`'s; where a new folder goes on it is
+  `Config<Hub>::new_folder_path`; moving direct shares over
   is `commands::convert::convert`, which `client::hub()` runs on first connecting (the client
   calling into the commands for it) and `join` when joining - so `synchub convert` just
   connects. Sharing through the hub is
@@ -83,8 +192,11 @@ introduction accurate as the hub logic evolves.
   (`Client::wait_for_folder`, up to half a minute; in a dry run it says it would), then
   moves this device's copy with `mv::move_recursive`.
 - Operations report with `say!` (what was done; stdout), `warn!` and `step!` (a step as it starts,
-  e.g. "pausing Notes"; stderr) from `src/output.rs`, never `println!`/`eprintln!`. Give a
-  slow operation steps, announced before the slow part.
+  e.g. "pausing Notes"; stderr) from `src/output.rs`, never `println!`/`eprintln!`: from the
+  command line they print, inside the app they're sent to the busy dialog, each line as it's
+  reported (`output::stream`, into a channel the dialog drains on each draw); the app's log shows only the actions' command lines (the last three), so
+  what's reported is seen in the dialog only. Give a slow operation steps, announced before the
+  slow part, so the dialog never sits on its heading alone.
 - Changes to Syncthing go through `Client`'s high-level operations (`pause`,
   `resume`, `set_path`, `share`, `unshare`, `add_folder`, `remove_folder`, `set_introducer`, ...),
   never raw JSON: each one reports itself with a descriptive `step!` (`here:` / `hub:` prefix),
@@ -93,10 +205,8 @@ introduction accurate as the hub logic evolves.
 - Clients are built: `ClientBuilder::local(&connection)` / `ClientBuilder::hub(url, api_key)`
   (setup errors wait for `connect()`), and its `connect()` builds, connects (pings) and returns
   the connected client; `HubClient::connect` builds on it and checks the hub's device ID. Both
-  use one rustls configuration accepting any certificate (`client::tls::config()`; the probe of
-  the hub's sync port uses it too, and reads the certificate off the connection, which rustls
-  keeps although Syncthing then ends the handshake - verified): this device's GUI certificate
-  is self-signed, and the hub is verified by device ID instead.
+  use one rustls configuration accepting any certificate (`client::tls::config()`): Syncthing's
+  GUI certificate is self-signed.
 - A request Syncthing refuses fails with `client::local::Refused` (it reads "<who> answered
   <status>: <body>"). An operation on an object by ID that may not be there doesn't look it up
   first: it sends the change, and Syncthing's 404 becomes `client::local::NotFound` ("the hub has
@@ -140,17 +250,16 @@ introduction accurate as the hub logic evolves.
   never a `String`/`&str` holding an ID). Parsing it (`FromStr`, which clap uses for
   `--device-id`) takes it as people write it - dashes and spaces optional, any case - and gives
   the canonical form; serde doesn't validate (Syncthing sends the canonical form).
-  `DeviceId::of_certificate` computes it from a sync certificate; `short()` is the first group,
+  `short()` is the first group,
   which the web UI shows for a device without a name; `device_id::identicon` draws the web
-  UI's picture of a device ID (`join` shows it when asking whether a device ID is the hub's).
-  Name/ID matching takes the user's key as a
+  UI's picture of a device ID (the app shows it for this device and the hub). Name/ID matching takes the user's key as a
   string (`Config::find_device`).
 
 ## How a command is written (`src/commands/mv.rs` is the model)
 
 - `run(args)` only turns the arguments into typed values (e.g. resolves SOURCE to an
   `api::config::Folder<Local>`) and calls the command's operation: a `pub` function taking those typed
-  values. The clients and settings are globals (`client::local()`,
+  values, which the app calls too. The clients and settings are globals (`client::local()`,
   `client::hub()`, `config`), never parameters.
 - The operation reads as a short sequence of named steps; each step is a small function getting
   only what it needs. Helpers follow in the order they're called.
@@ -175,7 +284,11 @@ introduction accurate as the hub logic evolves.
   removed from a folder would be added back, because the device still announces the folder.
 - A leaf learns from the hub which other devices share each folder; the leaves then sync with
   each other directly. Unticking a device on the hub makes the other leaves drop it too - but the
-  hub removes only what it introduced: a device added to a folder by hand on a leaf stays.
+  hub removes only what it introduced: a device added to a folder by hand on a leaf stays. The
+  leaf drops it only once the hub's update reaches it - right away on the sandbox, later over a
+  real network - so the app lists a folder's devices from the hub (its list, plus the leaf's
+  direct shares), never the leaf's own list alone, or an unshared device would still show its X
+  (reproduced on the sandbox by pausing the hub device on the leaf).
 - Removals go hub first, then the leaf: removed only on the leaf, the hub still offers the folder
   and the leaf auto-accepts it again. A leaf can't leave a folder on its own; ignoring the folder
   on the leaf doesn't help either (Syncthing issue #10935).
@@ -262,22 +375,28 @@ introduction accurate as the hub logic evolves.
   moves the nested folders along and repoints them (verified), and refuses to move a nested folder
   out of its parent without `-f`.
 - `synchub mv` moves into DEST when that's a directory with something in it (like `mv`);
-  otherwise DEST is the new path, and an empty directory there is replaced.
+  otherwise DEST is the new path, and an empty directory there is replaced. The app's move
+  dialog (`dir_browser::choose_target`) only accepts a new path or an empty directory, so the logged
+  `synchub mv SRC DEST` does exactly what the dialog did.
 - TLS uses rustls with the `ring` provider (installed as the default in `main.rs`; reqwest is
   built with `rustls-no-provider`): ring builds for every release target with just a C
   compiler.
   If ring ever fails to build on Windows or macOS, switch to a pure-Rust provider (`rustls-pure`)
   rather than back to aws-lc-rs.
-- The hub is verified by its device ID only (the maintainer's decision), at `join`: computed from the
-  certificate on the hub's sync port (`HubClient::probe_device_id`: a TLS handshake with ALPN `bep/1.0`;
-  Syncthing then rejects us for lacking a client certificate, but its own certificate has been
-  seen). It's the sync certificate's hash, so it can't be faked there. Given with `--device-id` it
-  is checked silently; with `-y` it's accepted unchecked; otherwise it's shown with the web UI's identicon (`src/device_id/identicon.rs`,
-  identical to Syncthing's `identiconDirective.js`) for the user to confirm. The ID the API
-  reports must match. `client::hub()` repeats both checks against the saved `device_id` (and
-  `sync_address`, defaulting to port 22000 of the hub's host) on every command. The API's own
-  certificate (`https-cert.pem`, not `cert.pem`) isn't checked
-  at all - HTTPS only, any certificate - so the API key relies on TLS encryption alone.
+- The hub isn't authenticated (the maintainer's decision, 2026-10-25). `join` takes the device
+  ID the hub's API reports (`/rest/system/status`); given with `--device-id` it's checked
+  silently, with `-y` accepted unchecked, otherwise shown with the web UI's identicon
+  (`src/device_id/identicon.rs`, identical to Syncthing's `identiconDirective.js`) for the user
+  to confirm. `HubClient::connect` checks it against the saved one on every connection. That
+  catches an address leading to another Syncthing, or a hub set up anew - not an impostor,
+  which can report any ID. The API's certificate (`https-cert.pem`, self-signed, not the
+  device's `cert.pem`) isn't checked, so the API key relies on TLS encryption alone. Dropped:
+  probing the hub's sync port for its certificate (`probe_device_id`, `--sync-address`): it
+  proved who held the sync port, not who answered the API - a separate TLS connection - and
+  failed whenever port 22000 wasn't reachable from this machine. Authenticating the API would
+  take its certificate checked before the key is sent: the device certificate served as the
+  GUI's (its hash is the device ID), or a CA-signed one for the hub's hostname; pinning the
+  certificate seen at `join` was rejected - whoever answers at `join` gets the key and the pin.
 - `join`'s positional API key has the clap id `hub_api_key`: `api_key` is the global option
   for the local Syncthing's key, and clap merges arguments with the same id.
 - Changing a folder's devices works on its current state, fetched by ID - not the state loaded at

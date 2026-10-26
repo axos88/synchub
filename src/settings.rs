@@ -25,22 +25,8 @@ pub struct Hub {
     /// The hub's GUI/API address, https://...
     pub url: String,
     pub api_key: String,
-    /// The hub's device ID, verified on every connection.
+    /// The hub's device ID: its API must report it.
     pub device_id: DeviceId,
-    /// Where the hub listens for devices (host:port); its certificate there
-    /// proves the device ID. Empty in files from before it was stored.
-    #[serde(default)]
-    pub sync_address: String,
-}
-
-impl Hub {
-    pub fn sync_address(&self) -> String {
-        if self.sync_address.is_empty() {
-            default_sync_address(&self.url)
-        } else {
-            self.sync_address.clone()
-        }
-    }
 }
 
 /// What this run was started with.
@@ -109,24 +95,6 @@ pub fn dry_run() -> bool {
     run().dry_run
 }
 
-/// Where the hub at `url` listens for devices unless told otherwise: port 22000 of its host.
-pub fn default_sync_address(url: &str) -> String {
-    format!("{}:22000", host(url))
-}
-
-/// The host part of an https:// URL (with brackets, for IPv6).
-fn host(url: &str) -> &str {
-    let rest = url.strip_prefix("https://").unwrap_or(url);
-    let authority = rest.split('/').next().unwrap_or(rest);
-    if authority.starts_with('[') {
-        return authority
-            .split(']')
-            .next()
-            .map_or(authority, |h| &authority[..h.len() + 1]);
-    }
-    authority.split(':').next().unwrap_or(authority)
-}
-
 pub fn default_path() -> PathBuf {
     let base = if cfg!(target_os = "macos") {
         paths::home().join("Library/Application Support")
@@ -175,16 +143,6 @@ mod tests {
     const ID: &str = "NLHZ5AC-IMOKBMU-4FWXEPU-CXFUK2Y-G5VFCRK-XGZBJ33-TV7VMVP-VPDVHAP";
 
     #[test]
-    fn sync_address_defaults_to_port_22000_of_the_hub() {
-        assert_eq!(
-            default_sync_address("https://hub.example.com:8384"),
-            "hub.example.com:22000"
-        );
-        assert_eq!(default_sync_address("https://hub/x"), "hub:22000");
-        assert_eq!(default_sync_address("https://[::1]:8384"), "[::1]:22000");
-    }
-
-    #[test]
     fn round_trips_and_is_private() {
         let dir = std::env::temp_dir().join(format!("synchub-settings-{}", std::process::id()));
         let file = dir.join("config.toml");
@@ -193,7 +151,6 @@ mod tests {
                 url: "https://hub:8384".into(),
                 api_key: "KEY".into(),
                 device_id: ID.parse().unwrap(),
-                sync_address: "hub:22000".into(),
             }),
         };
         write(&file, &settings).unwrap();

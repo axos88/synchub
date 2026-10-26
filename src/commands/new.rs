@@ -7,6 +7,7 @@ use itertools::Itertools;
 
 use crate::api;
 use crate::client;
+use crate::commands::{Arguments, option};
 use crate::device_id::DeviceId;
 use crate::folder_id::FolderId;
 use crate::paths;
@@ -19,18 +20,31 @@ use crate::side::{Hub, Local};
 /// with this device and the devices given, which get it automatically.
 ///
 /// Example: synchub new ~/projects/notes --label Notes --device laptop
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The directory to share
-    path: PathBuf,
+    pub path: PathBuf,
     /// The folder's label [default: none - like the web UI, the folder then
     /// shows by its ID]
     #[arg(long)]
-    label: Option<String>,
+    pub label: Option<String>,
     /// A device to share it with - its name on this device, or its device
     /// ID; repeat for more
     #[arg(long = "device")]
-    devices: Vec<String>,
+    pub devices: Vec<String>,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        std::iter::once(self.path.display().to_string())
+            .chain(option("--label", self.label.as_ref()))
+            .chain(
+                self.devices
+                    .iter()
+                    .flat_map(|device| ["--device".to_string(), device.clone()]),
+            )
+            .collect()
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

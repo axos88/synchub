@@ -35,7 +35,7 @@ struct Cli {
     #[arg(short = 'n', long, global = true)]
     dry_run: bool,
     #[command(subcommand)]
-    command: commands::Command,
+    command: Option<commands::Command>,
 }
 
 fn main() -> ExitCode {
@@ -48,7 +48,10 @@ fn main() -> ExitCode {
         cli.dry_run,
     );
     client::local::init(cli.connection);
-    let result = commands::run(cli.command);
+    let command = cli
+        .command
+        .unwrap_or(commands::Command::App(Default::default()));
+    let result = commands::run(command);
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {

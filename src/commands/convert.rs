@@ -8,6 +8,7 @@ use anyhow::Result;
 use crate::api;
 use crate::client;
 use crate::client::HubClient;
+use crate::commands::Arguments;
 use crate::device_id::DeviceId;
 use crate::say;
 use crate::side::{Hub, Local};
@@ -23,8 +24,14 @@ use crate::side::{Hub, Local};
 /// also happens whenever a command first connects to the hub.
 ///
 /// Example: synchub convert
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
 
 pub fn run(_args: Args) -> Result<()> {
     // Connecting to the hub converts: see `client::hub`.

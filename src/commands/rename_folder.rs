@@ -3,6 +3,7 @@
 use anyhow::Result;
 
 use crate::client;
+use crate::commands::Arguments;
 use crate::commands::sync;
 use crate::folder_id::FolderId;
 
@@ -13,13 +14,19 @@ use crate::folder_id::FolderId;
 /// keep theirs. Its directories keep their names.
 ///
 /// Example: synchub rename-folder Website Homepage
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The folder: its directory, ID or label on this device - or the ID of
     /// one only the hub has
-    folder: String,
+    pub folder: String,
     /// Its new label
-    label: String,
+    pub label: String,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        vec![self.folder.clone(), self.label.clone()]
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

@@ -6,9 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::bail;
-use data_encoding::BASE32_NOPAD;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 /// A device's ID: the SHA-256 of its sync certificate in base32, with a Luhn
 /// check character after every 13, in eight groups of seven - e.g.
@@ -18,17 +16,6 @@ use sha2::{Digest, Sha256};
 pub struct DeviceId(String);
 
 impl DeviceId {
-    /// The device ID of a device's sync certificate (`der`).
-    pub fn of_certificate(der: &[u8]) -> Self {
-        let base32 = BASE32_NOPAD.encode(&Sha256::digest(der));
-        let mut checked = Vec::new();
-        for chunk in base32.as_bytes().chunks(13) {
-            checked.extend_from_slice(chunk);
-            checked.push(luhn_base32(chunk));
-        }
-        DeviceId(grouped(&checked))
-    }
-
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -73,44 +60,12 @@ fn grouped(chars: &[u8]) -> String {
         .join("-")
 }
 
-/// Syncthing's Luhn mod 32 check character (lib/protocol/luhn.go).
-fn luhn_base32(chars: &[u8]) -> u8 {
-    let (mut factor, mut sum) = (1, 0);
-    for &c in chars {
-        let codepoint = BASE32.iter().position(|&b| b == c).unwrap_or(0);
-        let addend = factor * codepoint;
-        factor = if factor == 2 { 1 } else { 2 };
-        sum += addend / 32 + addend % 32;
-    }
-    BASE32[(32 - sum % 32) % 32]
-}
-
 #[cfg(test)]
 mod tests {
-    use rustls::pki_types::CertificateDer;
-    use rustls::pki_types::pem::PemObject;
-
     use super::*;
 
-    /// A throwaway test instance's sync certificate, and the device ID its Syncthing reported.
-    const CERT: &str = "-----BEGIN CERTIFICATE-----
-MIIBoDCCAVKgAwIBAgIJAK34EqACEpCZMAUGAytlcDBKMRIwEAYDVQQKEwlTeW5j
-dGhpbmcxIDAeBgNVBAsTF0F1dG9tYXRpY2FsbHkgR2VuZXJhdGVkMRIwEAYDVQQD
-EwlzeW5jdGhpbmcwHhcNMjYxMDIyMDAwMDAwWhcNNDYxMDE3MDAwMDAwWjBKMRIw
-EAYDVQQKEwlTeW5jdGhpbmcxIDAeBgNVBAsTF0F1dG9tYXRpY2FsbHkgR2VuZXJh
-dGVkMRIwEAYDVQQDEwlzeW5jdGhpbmcwKjAFBgMrZXADIQDv4iIARG+cJmiFCnnj
-jTXe+BTGyepU7IxpobSoc7eEFKNVMFMwDgYDVR0PAQH/BAQDAgWgMB0GA1UdJQQW
-MBQGCCsGAQUFBwMBBggrBgEFBQcDAjAMBgNVHRMBAf8EAjAAMBQGA1UdEQQNMAuC
-CXN5bmN0aGluZzAFBgMrZXADQQDbMFnrRU71ORvs1lApILE9ilnMEyrkmitp/JDe
-yuqFUufgBp6vUSX/ikeqJqcMquB948M5B85/v6bs2ODOrFEK
------END CERTIFICATE-----";
+    /// A device ID, as Syncthing writes it.
     const ID: &str = "NLHZ5AC-IMOKBMU-4FWXEPU-CXFUK2Y-G5VFCRK-XGZBJ33-TV7VMVP-VPDVHAP";
-
-    #[test]
-    fn computes_syncthings_device_id() {
-        let der = CertificateDer::from_pem_slice(CERT.as_bytes()).unwrap();
-        assert_eq!(DeviceId::of_certificate(&der).as_str(), ID);
-    }
 
     #[test]
     fn parses_ids_as_people_write_them() {

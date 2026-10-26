@@ -144,6 +144,18 @@ impl<S: Side> ClientBuilder<S> {
 }
 
 impl<S: Side> Client<S> {
+    /// Where its Syncthing is: the API's URL, or its Unix socket.
+    pub fn address(&self) -> &str {
+        &self.address
+    }
+
+    /// The Syncthing version running there, e.g. `v2.1.7`.
+    pub fn version(&self) -> Result<String> {
+        Ok(self
+            .get::<api::system::VersionResponse>("system/version")?
+            .version)
+    }
+
     pub fn ping(&self) -> Result<()> {
         let ping: api::system::PingResponse = self.get("system/ping")?;
         if ping.ping != "pong" {
@@ -513,6 +525,11 @@ impl<S: Side> Client<S> {
                 ..Default::default()
             },
         )
+    }
+
+    /// The template new folders are made from: a folder without an ID.
+    pub fn folder_defaults(&self) -> Result<api::config::FolderResponse<S>> {
+        self.get("config/defaults/folder")
     }
 
     /// New folders: shared with no device but `own_id` (this instance's own),

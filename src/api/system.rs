@@ -12,6 +12,13 @@ pub struct PingResponse {
     pub ping: String,
 }
 
+/// `/rest/system/version`.
+#[derive(Deserialize)]
+pub struct VersionResponse {
+    /// e.g. `v2.1.7`.
+    pub version: String,
+}
+
 /// `/rest/system/status`.
 #[derive(Deserialize)]
 pub struct StatusResponse {

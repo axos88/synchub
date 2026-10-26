@@ -1,15 +1,10 @@
-//! The hub's API client: verified to belong to the hub, and made once.
+//! The hub's API client: checked to be the hub's, and made once.
 
-use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::Deref;
-use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
-use rustls::ClientConnection;
-use rustls::pki_types::ServerName;
 
 use super::{Client, ClientBuilder};
 use crate::client;
@@ -22,7 +17,7 @@ use crate::{say, step};
 
 static CLIENT: OnceCell<HubClient> = OnceCell::new();
 
-/// The hub this device uses, connected and verified on first use.
+/// The hub this device uses, connected and checked on first use.
 ///
 /// Everything that uses the hub comes through here, so connecting is also
 /// when folders shared directly with devices that have joined the hub since
@@ -38,31 +33,13 @@ fn connect() -> Result<HubClient> {
             settings::file().display()
         )
     })?;
-    verify(&hub)?;
     let client = HubClient::connect(&hub.url, &hub.api_key, &hub.device_id)?;
     convert::convert(&client)?;
     Ok(client)
 }
 
-/// Checks that the hub is still the device set up with `synchub join`: the
-/// certificate on its sync port must have the stored device ID.
-fn verify(hub: &settings::Hub) -> Result<()> {
-    let address = hub.sync_address();
-    step!(Hub, "checking its device ID on its sync port {address}");
-    let presented = HubClient::probe_device_id(&address).with_context(|| {
-        format!("can't verify the hub: no device ID from its sync port {address}")
-    })?;
-    if presented != hub.device_id {
-        bail!(
-            "the Syncthing at {address} has device ID {presented}, not the hub's {} (from `synchub join`): the hub was replaced, or the address leads elsewhere; not using it - if the hub changed, run `synchub join` again",
-            hub.device_id
-        );
-    }
-    Ok(())
-}
-
-/// The hub's API, verified to belong to the hub: only [`HubClient::connect`]
-/// makes one.
+/// The hub's API, checked to report the hub's device ID: only
+/// [`HubClient::connect`] makes one.
 pub struct HubClient {
     client: Client<Hub>,
     id: DeviceId,
@@ -86,7 +63,7 @@ impl HubClient {
         let reported = client.my_id()?;
         if reported != *hub_id {
             bail!(
-                "the API at {url} belongs to device {reported}, but the hub is {hub_id}: the address leads to another Syncthing than the hub's sync port"
+                "the API at {url} belongs to device {reported}, but the hub is {hub_id}: the address leads to another Syncthing - or the hub was set up anew; then run `synchub join` again"
             );
         }
         Ok(HubClient {
@@ -107,37 +84,6 @@ impl HubClient {
         } else {
             format!("https://{url}")
         })
-    }
-
-    /// The device ID of the Syncthing listening for devices at `address` (host:port),
-    /// from the certificate it presents - no key involved.
-    pub fn probe_device_id(address: &str) -> Result<DeviceId> {
-        let mut config = super::tls::config()?;
-        config.alpn_protocols = vec![b"bep/1.0".to_vec()];
-        let target = address
-            .to_socket_addrs()?
-            .next()
-            .with_context(|| format!("{address}: no address"))?;
-        let mut stream = TcpStream::connect_timeout(&target, Duration::from_secs(5))?;
-        stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-        // Syncthing doesn't look at the server name.
-        let name = ServerName::try_from("syncthing")?.to_owned();
-        let mut connection = ClientConnection::new(Arc::new(config), name)?;
-        // Syncthing wants a client certificate and gives up on us, but only after
-        // its own certificate has been seen.
-        while connection.is_handshaking() {
-            if let Err(err) = connection.complete_io(&mut stream) {
-                if connection.peer_certificates().is_none() {
-                    return Err(err).with_context(|| format!("TLS with {address}"));
-                }
-                break;
-            }
-        }
-        let certificate = connection
-            .peer_certificates()
-            .and_then(|certificates| certificates.first())
-            .with_context(|| format!("{address} presented no certificate"))?;
-        Ok(DeviceId::of_certificate(certificate))
     }
 
     /// The hub's device ID.

@@ -14,6 +14,7 @@ use itertools::Itertools;
 
 use crate::api;
 use crate::client;
+use crate::commands::Arguments;
 use crate::paths;
 use crate::settings;
 use crate::side::Local;
@@ -44,11 +45,17 @@ use crate::{say, step};
 /// when a .gitignore changes.
 ///
 /// Example: synchub gitignore .
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// A directory at, around or inside a Syncthing folder
     #[arg(default_value = ".")]
-    path: PathBuf,
+    pub path: PathBuf,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        vec![self.path.display().to_string()]
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

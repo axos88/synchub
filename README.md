@@ -3,8 +3,8 @@
 synchub manages a personal [Syncthing](https://syncthing.net/) network - your
 laptops, desktops and servers - built around one always-on **hub**. It joins a
 device to the hub, converts an existing network to the hub one device at a
-time, and lets each device choose its shares - and who else sees them - from
-the command line. It also carries a few helpers for
+time, and shows everything in an app where each device chooses its shares -
+and who else sees them - a key at a time. It also carries a few helpers for
 everyday Syncthing chores: moving a synced directory, replacing a share's
 contents everywhere, and keeping what git ignores out of the sync.
 
@@ -118,16 +118,23 @@ synchub join https://hub.example.com:8384 <the hub's API key> [--device-id <the 
 
 (`synchub init` is the same command.)
 
-`join` first verifies the hub by its **device ID**, computed from the
-certificate on the hub's sync port (`--sync-address`, by default port 22000 of
-the hub's host). A device ID is the hash of the device's certificate, so only
-the real hub can present it. With `--device-id`, the hub is checked against it
-without asking; with `-y`, whatever ID is found is accepted unchecked (which
-trusts the network path to the hub); otherwise `join` shows the ID together
-with the picture the hub's web UI draws for it, for you to compare:
+Or just run `synchub`: on a device that hasn't joined a hub, the app starts
+with a form asking for the hub's address, API key and the directory for new
+folders - chosen in the
+directory browser (Space or a click on the field) - then shows the
+hub's device ID and picture for you to confirm, and joins. The log shows the
+`synchub join` command that does the same - with the API key left out: it
+runs with the key in the `SYNCHUB_HUB_API_KEY` environment variable. In every form, Enter moves to the
+next required field that's still empty, and submits once none is.
+
+`join` first checks that the address leads to the hub, by the **device ID**
+the hub's API reports. With `--device-id`, it's checked against that without
+asking; with `-y`, whatever ID is reported is accepted unchecked; otherwise
+`join` shows the ID together with the picture the hub's web UI draws for it,
+for you to compare:
 
 ```
-The hub's device ID, from its sync port hub.example.com:22000:
+The device ID of the Syncthing at https://hub.example.com:8384:
 
     ██      ██
     ██  ██  ██
@@ -138,10 +145,10 @@ The hub's device ID, from its sync port hub.example.com:22000:
     NLHZ5AC-IMOKBMU-4FWXEPU-CXFUK2Y-G5VFCRK-XGZBJ33-TV7VMVP-VPDVHAP
 ```
 
-After logging in, the ID the hub's API reports must match it too. The API's
-own (self-signed) certificate isn't checked: it's a different certificate from
-the sync port's, so the API key is protected only by TLS encryption, not by
-verifying who receives it.
+This catches an address that leads to another Syncthing; it doesn't
+authenticate the hub. The API's (self-signed) certificate isn't checked, so
+the API key is protected by TLS encryption only, not by verifying who receives
+it - and an impostor can report any device ID.
 
 Then it
 
@@ -149,12 +156,81 @@ Then it
   and makes new folders shared with no device by default
   (`--default-folders-dir` sets where they go);
 - on the hub: adds this device, without auto-accept or introducer;
-- saves the hub's address, API key, device ID and sync address;
+- saves the hub's address, API key and device ID;
 - converts the existing network (see below).
 
-Every later command that uses the hub verifies it again the same way: the
-certificate on its sync port must have the saved device ID, and so must the ID
-its API reports - otherwise the command refuses to use it.
+Every later command that uses the hub checks again that its API reports the
+saved device ID - otherwise the command refuses to use it (the address leads
+elsewhere, or the hub was set up anew: then `join` again).
+
+## The app
+
+```sh
+synchub        # or: synchub app, synchub ui, synchub run
+```
+
+opens the app: this device and the hub side by side - each with the picture
+its web UI draws for it, name, device ID, address and Syncthing version, and
+for the hub whether its API is reachable and whether this device is connected
+to it - and below them every folder here, with its state (in sync, syncing,
+scanning, ...) and, for each device it's shared with, whether that device is
+connected and how far it has synced. The hub's shares this device doesn't have
+are listed at the end.
+
+The highlighted folder opens up: under its devices it lists the hub's other
+devices it isn't shared with yet, as `[ ]`, so sharing it with one is a key
+away. The status bar lists the keys that do something for the highlighted row,
+and what - e.g. `(Enter, Space, s) share with laptop` - leaving out the others:
+
+| Key | On a folder | On a device under a folder | On a hub share that isn't here |
+|---|---|---|---|
+| Enter | move it to another directory or name (see below) | share with it / stop sharing with it | get it on this device |
+| Space | - | share with it / stop sharing with it | - |
+| `s` / `u` | - | share with it / stop sharing with it | - |
+| `m` | move it | move its folder | - |
+| `d` | remove it from this device and the hub, once you confirm - the files stay | - | - |
+| `g` | gitignore it | gitignore its folder | - |
+| `a` | - | - | get it on this device |
+| `R` | rename it (on the hub and here) | rename the device (on the hub and here) | rename it on the hub |
+
+Moving opens a directory browser with the destination path above it. The
+path is the highlighted directory's (`./` is the one shown, `../` its
+parent); → or a double click go into the highlighted directory, ← goes up.
+Typing replaces the highlighted entry with a name in the directory shown (↑ on
+the first row, or a click, edits the path as it is instead), and the list
+follows the path as you type, highlighting the entry it names exactly - or
+nothing. When the name only begins a directory's, the rest is shown inverted:
+Tab completes it, and Tab / Shift-Tab again cycle through every directory the
+name begins - the completed part stays inverted until you type on. ↓ goes
+back to the list, at the highlighted entry. Enter, in the list or the path,
+opens the highlighted directory (or goes up, on `../`); with `./` or nothing
+highlighted it moves the folder to exactly the path - a new one, or an empty
+directory, which it replaces. The keys line says what Enter does now; the
+status line says where the folder goes, or why it can't. Ctrl-H goes to the
+home directory.
+
+And anywhere: `n` shares a new directory (a form for the directory, the label
+and the devices; it starts in its directory browser - `j`/`k` move, Enter
+opens, `-` goes up, Space chooses the highlighted directory, `c` the current
+one, `~` or Ctrl-H home - and Space or a click on the directory field opens it
+again), `r` refreshes, `q` quits - also while the app loads or refreshes,
+without waiting for a slow hub. `j`/`k` or the arrow
+keys move; the mouse selects, double-click is Enter, the wheel scrolls.
+
+Every change is made on the hub, the way the hub works: sharing a folder with
+another device means the hub shares it, and the other device gets it
+automatically. An action runs in the background, with a small dialog saying
+what's being done and listing its steps as they happen (e.g. for a move:
+pausing the folder, moving the directory, pointing the folder at the new
+place, resuming it). If it fails, the dialog shows the error and stays until
+you press OK (Enter, Space, Esc or a click on the button) - so does an action
+needing the hub while the hub can't be reached. A refresh that fails says why
+the same way, and the app keeps showing what it last loaded. Questions are dialogs too, with
+buttons: removing asks you to confirm, renaming asks for the new name (Tab, or
+↓ and ↑, moves between the name and the OK and Cancel buttons; Enter in the
+name presses the button chosen last). The status bar lists a dialog's keys. The log above the
+status bar shows the commands that do the same from the command line - the
+last three, e.g. `$ synchub share sdbyy-l7snl laptop`.
 
 ### Converting an existing network
 
@@ -170,7 +246,7 @@ settings, until they do. The folders keep syncing throughout.
 
 ## Commands
 
-The commands:
+Everything the app does is also a command, for scripts:
 
 | Command | What it does |
 |---|---|
@@ -191,8 +267,9 @@ device has (meaning the hub's folder with the same ID); `mv`, `overwrite` and
 label of a folder on this device. DEVICE is looked up on the
 hub: its name, its device ID, or the ID's first seven characters at least, in
 any case. The hub's labels and
-names are the reference (`synchub sync`). A missing
-argument is an error. Each change is reported as it's made
+names are the reference (`synchub sync`). The
+commands never open screens of their own - a missing argument is an error; the
+app is `synchub` on its own. Each change is reported as it's made
 (e.g. `local: pausing Notes`, `hub: sharing Notes with laptop`), on stderr.
 `-n` / `--dry-run`, with any command, changes nothing: it prints what would be
 done instead (`local: would pause Notes`).

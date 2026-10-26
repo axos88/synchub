@@ -8,6 +8,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::api;
 use crate::client;
+use crate::commands::{Arguments, flag};
 use crate::folder_id::FolderId;
 use crate::paths;
 use crate::settings;
@@ -29,15 +30,23 @@ use crate::{say, step, warn};
 /// Example: synchub remove Website
 ///
 /// Example: synchub remove ~/projects/website --delete-files
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The folder: its directory, ID or label on this device - or the ID of
     /// one only the hub has
-    folder: String,
+    pub folder: String,
     /// Also delete the files: on every connected device sharing the folder,
     /// and its directory here
     #[arg(long)]
-    delete_files: bool,
+    pub delete_files: bool,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        std::iter::once(self.folder.clone())
+            .chain(flag(self.delete_files, "--delete-files"))
+            .collect()
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

@@ -3,6 +3,7 @@
 use anyhow::Result;
 
 use crate::client;
+use crate::commands::Arguments;
 use crate::commands::sync;
 use crate::device_id::DeviceId;
 
@@ -14,13 +15,19 @@ use crate::device_id::DeviceId;
 /// for it.
 ///
 /// Example: synchub rename-device laptop workstation
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The device: its name on this device, or its device ID (in full, for
     /// one this device doesn't know)
-    device: String,
+    pub device: String,
     /// Its new name
-    name: String,
+    pub name: String,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        vec![self.device.clone(), self.name.clone()]
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

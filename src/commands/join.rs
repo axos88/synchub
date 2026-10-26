@@ -1,10 +1,10 @@
 //! `synchub join`: set this device up to get its folders from the hub.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
-use crate::client::HubClient;
-use crate::client::{self, Client};
+use crate::client::{self, Client, ClientBuilder, HubClient};
 use crate::commands::convert;
+use crate::commands::{Arguments, flag, option};
 use crate::device_id::DeviceId;
 use crate::device_id::identicon;
 use crate::prompt;
@@ -14,12 +14,10 @@ use crate::side::Hub;
 
 /// Set this device up to use the hub.
 ///
-/// Verifies the hub first, by its device ID: the hash of the certificate on
-/// its sync port (--sync-address), which only the real hub can present. Given
-/// with --device-id, it's checked against that; with -y, it's accepted
-/// unchecked; otherwise it's shown, with the picture the hub's web UI draws
-/// for it, for you to compare. The device ID
-/// the hub's API then reports must match it too. Then, here:
+/// Checks first that the address leads to the hub, by the device ID its API
+/// reports. Given with --device-id, it's checked against that; with -y, it's
+/// accepted unchecked; otherwise it's shown, with the picture the hub's web UI
+/// draws for it, for you to compare. Then, here:
 /// the hub becomes the introducer whose folders are accepted automatically,
 /// and new folders are shared with no device by default. On the hub: this device is added, without auto-accept or
 /// introducer. Last, the hub's address, API key and device ID are saved for
@@ -36,7 +34,7 @@ use crate::side::Hub;
 /// Missing arguments are asked for in a form.
 ///
 /// Example: synchub join https://hub.example.com:8384 <API key>
-#[derive(clap::Args)]
+#[derive(clap::Args, Clone, Debug, PartialEq)]
 pub struct Args {
     /// The hub's GUI/API address, https://host:8384
     pub url: String,
@@ -52,10 +50,7 @@ pub struct Args {
     /// The hub's device ID; when given, the hub is checked against it without asking
     #[arg(long)]
     pub device_id: Option<DeviceId>,
-    /// Where the hub listens for devices, host:port [default: the hub's host, port 22000]
-    #[arg(long)]
-    pub sync_address: Option<String>,
-    /// Accept the hub's device ID without asking - trusting whatever answers at the sync address
+    /// Accept the hub's device ID without asking - trusting whatever answers at the address
     #[arg(short, long)]
     pub yes: bool,
     /// The directory new folders go into on this device [default: unchanged]
@@ -63,51 +58,52 @@ pub struct Args {
     pub default_folders_dir: Option<String>,
 }
 
+/// The API key is left out - a secret, kept out of the log: the command
+/// takes it from SYNCHUB_HUB_API_KEY then.
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        std::iter::once(self.url.clone())
+            .chain(option("--device-id", self.device_id.as_ref()))
+            .chain(flag(self.yes, "--yes"))
+            .chain(option(
+                "--default-folders-dir",
+                self.default_folders_dir.as_ref(),
+            ))
+            .collect()
+    }
+}
+
 pub fn run(args: Args) -> Result<()> {
     let hub = find_hub(&args)?;
     match &args.device_id {
         Some(expected) if *expected == hub.device_id => {
-            say!(
-                Hub,
-                "device ID {} verified at {}",
-                hub.device_id,
-                hub.sync_address
-            );
+            say!(Hub, "device ID {} checked at {}", hub.device_id, hub.url);
         }
         Some(expected) => bail!(
-            "the Syncthing at {} has device ID {}, not the hub's {expected}: check --sync-address and --device-id; nothing changed",
-            hub.sync_address,
+            "the Syncthing at {} has device ID {}, not the hub's {expected}: check the address and --device-id; nothing changed",
+            hub.url,
             hub.device_id
         ),
         None if args.yes => say!(
             Hub,
             "device ID {} at {}, accepted unchecked (-y)",
             hub.device_id,
-            hub.sync_address
+            hub.url
         ),
-        None => confirm_hub_id(&hub.device_id, &hub.sync_address)?,
+        None => confirm_hub_id(&hub.device_id, &hub.url)?,
     }
     join_hub(hub, args.default_folders_dir.as_deref())
 }
 
-/// The hub `args` names, with the device ID it presents on its sync port -
-/// for checking before joining it.
+/// The hub `args` names, with the device ID its API reports - for checking
+/// before joining it.
 pub fn find_hub(args: &Args) -> Result<settings::Hub> {
     let url = HubClient::api_url(&args.url)?;
-    let sync_address = args
-        .sync_address
-        .clone()
-        .unwrap_or_else(|| settings::default_sync_address(&url));
-    let device_id = HubClient::probe_device_id(&sync_address).with_context(|| {
-        format!(
-            "can't get the hub's device ID from its sync port {sync_address}; give the right one with --sync-address"
-        )
-    })?;
+    let device_id = ClientBuilder::hub(&url, &args.api_key).connect()?.my_id()?;
     Ok(settings::Hub {
         url,
         api_key: args.api_key.clone(),
         device_id,
-        sync_address,
     })
 }
 
@@ -130,8 +126,8 @@ pub fn join_hub(hub: settings::Hub, default_folders_dir: Option<&str>) -> Result
 }
 
 /// Shows the device ID and its picture, and asks whether it's the hub's.
-fn confirm_hub_id(hub_id: &DeviceId, sync_address: &str) -> Result<()> {
-    say!("The hub's device ID, from its sync port {sync_address}:\n");
+fn confirm_hub_id(hub_id: &DeviceId, url: &str) -> Result<()> {
+    say!("The device ID of the Syncthing at {url}:\n");
     say!("{}", identicon::render(hub_id));
     say!("    {hub_id}\n");
     say!(

@@ -5,13 +5,20 @@ use itertools::Itertools;
 
 use crate::api;
 use crate::client;
+use crate::commands::Arguments;
 use crate::device_id::DeviceId;
 use crate::side::{Hub, Local};
 use crate::{say, step};
 
 /// List the hub's shares, which of them this device has, and who else has them
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
 
 pub fn run(_args: Args) -> Result<()> {
     let (local, hub) = (client::local()?, client::hub()?);

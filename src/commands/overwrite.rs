@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::api;
 use crate::client;
+use crate::commands::{Arguments, flag};
 use crate::folder_id::FolderId;
 use crate::paths;
 use crate::settings;
@@ -35,15 +36,27 @@ use crate::{say, warn};
 /// is restored too.
 ///
 /// Example: synchub overwrite ~/projects/website shy4a-ady3g
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The directory whose contents the folder gets
-    local_dir: PathBuf,
+    pub local_dir: PathBuf,
     /// The existing Syncthing folder's ID (see the web UI, or `syncthing cli config folders list`)
-    folder_id: FolderId,
+    pub folder_id: FolderId,
     /// Allow LOCAL_DIR inside, or containing, another Syncthing folder
     #[arg(short, long)]
-    force: bool,
+    pub force: bool,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        [
+            self.local_dir.display().to_string(),
+            self.folder_id.to_string(),
+        ]
+        .into_iter()
+        .chain(flag(self.force, "--force"))
+        .collect()
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

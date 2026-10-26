@@ -10,6 +10,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::api;
 use crate::client;
+use crate::commands::{Arguments, flag};
 use crate::paths;
 use crate::settings;
 use crate::side::Local;
@@ -29,17 +30,26 @@ use crate::{say, step, warn};
 /// Example: synchub mv ~/projects/website ~/work/website
 ///
 /// Example: synchub mv shy4a-ady3g ~/work/website
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The Syncthing folder to move: its directory, ID or label
-    source: String,
+    pub source: String,
     /// Where to move it: into this directory if it has something in it,
     /// otherwise to this path
-    dest: PathBuf,
+    pub dest: PathBuf,
     /// Allow moving out of, or into, a directory another Syncthing folder
     /// syncs (that folder will see the files disappear or appear)
     #[arg(short, long)]
-    force: bool,
+    pub force: bool,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        [self.source.clone(), self.dest.display().to_string()]
+            .into_iter()
+            .chain(flag(self.force, "--force"))
+            .collect()
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {

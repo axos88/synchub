@@ -14,6 +14,10 @@ pub struct FolderStatus {
     #[serde(default)]
     pub error: String,
     pub local_files: u64,
+    #[serde(default)]
+    pub need_files: u64,
+    #[serde(default)]
+    pub need_bytes: u64,
 }
 
 /// A folder's ignore patterns (`/rest/db/ignores`).
@@ -36,4 +40,6 @@ pub struct Completion {
     pub completion: f64,
     #[serde(default)]
     pub need_items: u64,
+    #[serde(default)]
+    pub need_bytes: u64,
 }

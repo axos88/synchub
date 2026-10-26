@@ -3,6 +3,7 @@
 use anyhow::Result;
 
 use crate::client;
+use crate::commands::Arguments;
 use crate::device_id::DeviceId;
 use crate::folder_id::FolderId;
 
@@ -14,12 +15,18 @@ use crate::folder_id::FolderId;
 /// Example: synchub share Website laptop
 ///
 /// Example: synchub share ~/projects/website laptop
-#[derive(clap::Args)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The folder: its directory, ID or label
-    folder: String,
+    pub folder: String,
     /// The device to share it with: its name on this device, or its device ID
-    device: String,
+    pub device: String,
+}
+
+impl Arguments for Args {
+    fn arguments(&self) -> Vec<String> {
+        vec![self.folder.clone(), self.device.clone()]
+    }
 }
 
 pub fn run(args: Args) -> Result<()> {
