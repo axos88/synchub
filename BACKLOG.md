@@ -3,7 +3,7 @@
 Next free ID: D-16
 
 - D-7 · ~15 min · Join the real machines to the real hub (`synchub join`, needs the hub's API key)
-- D-12 · ~30 min · Drop `hub::hub_path` once Syncthing resolves relative folder paths - waiting for upstream
+- D-12 · ~30 min · Drop `new_folder_path` once Syncthing resolves relative folder paths - waiting for upstream
 - D-6 · ~30 min · Run the build workflow (binaries + rolling "latest" release): needs a push
 - D-14 · ~1 h · Text fields: a click doesn't move the cursor to where it lands
 - D-15 · ~½ day · Drawing changes nothing: layout computed apart from rendering, clicks hit-tested on it
@@ -154,7 +154,7 @@ Context:
   `api::config::Config<S>`; ~30 KB, a few ms on the sandbox). Verified 2026-10-24: the data of a
   `ConfigSaved` event (`/rest/events`) is exactly that object after the change.
 - Today the app re-reads both configs (this device's and the hub's) on every load: at start,
-  after each action, and on `R` (`app::state::State::load`).
+  after each action, and on Ctrl-R (`app::state::State::load`).
 - Commands read the config when they need it and exit, so a cache gains them nothing.
 
 Sketch: the client keeps the last config (e.g. behind a `Mutex`); a background thread long-polls
@@ -198,13 +198,14 @@ Next step: decide whether the app opts in (e.g. `Client::subscribe()`), or every
 subscribes on first `config()`; then the event channel above, with the config cache fed from the
 same long-poll threads.
 
-### D-12 · Drop `hub::hub_path` once Syncthing resolves relative folder paths
+### D-12 · Drop `new_folder_path` once Syncthing resolves relative folder paths
 
 `POST /rest/config/folders` without a path gives the new folder the folder defaults' directory
 itself (verified in the sandbox and in Syncthing's source, v2.1.7: `lib/api/confighandler.go`
-starts from a copy of the defaults), so synchub computes `<defaults>/<label>` for the hub in
-`hub::hub_path` - without being able to see whether that directory exists on the hub's disk.
-Auto-accept does it properly, server side.
+starts from a copy of the defaults), so synchub computes `<defaults>/<folder ID>` for the hub in
+`Config<Hub>::new_folder_path` (`src/api/config.rs`) - without being able to see whether that
+directory exists on the hub's disk (the ID is unique, so two folders don't meet, but a directory
+left there would be taken over). Auto-accept does it properly, server side.
 
 2026-10-24: the maintainer's fork has a change (`axos88/syncthing`, branch
 `api-folder-default-path`, commit 3b89afed; it replaced an earlier auto-accept-style attempt):
@@ -214,9 +215,10 @@ that exists and isn't an empty directory is refused with 409. Not yet proposed u
 Syncthing takes no unsolicited PRs and no mostly-AI-written code - an issue first, written by the
 maintainer.
 
-Next step: if it's released, `HubClient::create_folder`, `new` and `hub::convert` send the folder
-ID as a relative path (a 409 means the directory is taken), and `hub_path` goes - only when
-every hub runs that release (check its version first).
+Next step: Ákos to open the issue upstream. If it's released, `HubClient::create_folder`
+(`src/client/hub.rs`), `new::create` and `commands::convert::convert` send the folder ID as a
+relative path (a 409 means the directory is taken), and `new_folder_path` goes - only when every
+hub runs that release (check its version first).
 
 ### D-13 · A common interface for the app's components
 

@@ -101,7 +101,7 @@ introduction accurate as the hub logic evolves.
   until then, so the components never deal with an unloaded state; the page's code reads it
   through `App::state()`, or `main::loaded(&self.state)` beside a borrow of the tree - both an
   error, passed on with `?`, before it's loaded - and the status bar's `hot_keys` is given it) and loads it with
-  `App::reload` - like `R`'s refresh - behind the busy dialog, so the screen appears at once;
+  `App::reload` - like Ctrl-R's refresh - behind the busy dialog, so the screen appears at once;
   during a reload, which changes nothing, `q`/Esc/Ctrl-C quit without waiting for a slow hub.
   A reload failing keeps the state shown, after an alert saying why; the first load failing
   ends the app with the error.

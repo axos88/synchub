@@ -4,7 +4,7 @@
 use std::ops::ControlFlow;
 
 use anyhow::Result;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, MouseEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 
 use super::loaded;
 use crate::commands::app::App;
@@ -45,7 +45,11 @@ impl App {
     fn action(&mut self, key: KeyEvent) -> Result<()> {
         let selected = self.tree.selected().cloned();
         let expanded = self.tree.expanded().cloned();
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match (key.code, selected, expanded) {
+            (KeyCode::Char('r'), ..) if ctrl => self.refresh()?,
+            // Not the letter's action.
+            _ if ctrl => {}
             (KeyCode::Char(' '), Some(Key::Device(folder, device)), _) => {
                 self.toggle(&folder, &device)?
             }
@@ -60,7 +64,6 @@ impl App {
             (KeyCode::Char('d'), Some(Key::Folder(folder)), _) => self.remove(folder)?,
             (KeyCode::Char('g'), _, Some(folder)) => self.gitignore(&folder)?,
             (KeyCode::Char('a'), Some(Key::Elsewhere(folder)), _) => self.fetch_folder(&folder)?,
-            (KeyCode::Char('R'), ..) => self.refresh()?,
             (KeyCode::Char('r'), Some(Key::Device(_, device)), _) => self.rename_device(&device)?,
             (KeyCode::Char('r'), Some(Key::Folder(folder) | Key::Elsewhere(folder)), _) => {
                 self.rename_folder(&folder)?
@@ -130,7 +133,7 @@ impl App {
         if hub {
             hot_keys.push(HotKey::new(&["n"], "new share"));
         }
-        hot_keys.push(HotKey::new(&["R"], "refresh"));
+        hot_keys.push(HotKey::new(&["Ctrl-R"], "refresh"));
         hot_keys.push(HotKey::new(&["q"], "quit"));
 
         HotKeys(hot_keys)
