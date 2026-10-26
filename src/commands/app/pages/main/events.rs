@@ -60,9 +60,9 @@ impl App {
             (KeyCode::Char('d'), Some(Key::Folder(folder)), _) => self.remove(folder)?,
             (KeyCode::Char('g'), _, Some(folder)) => self.gitignore(&folder)?,
             (KeyCode::Char('a'), Some(Key::Elsewhere(folder)), _) => self.fetch_folder(&folder)?,
-            (KeyCode::Char('r'), ..) => self.refresh()?,
-            (KeyCode::Char('R'), Some(Key::Device(_, device)), _) => self.rename_device(&device)?,
-            (KeyCode::Char('R'), Some(Key::Folder(folder) | Key::Elsewhere(folder)), _) => {
+            (KeyCode::Char('R'), ..) => self.refresh()?,
+            (KeyCode::Char('r'), Some(Key::Device(_, device)), _) => self.rename_device(&device)?,
+            (KeyCode::Char('r'), Some(Key::Folder(folder) | Key::Elsewhere(folder)), _) => {
                 self.rename_folder(&folder)?
             }
             _ => {}
@@ -93,7 +93,7 @@ impl App {
                     format!("move {label} to another directory"),
                 ));
                 if hub {
-                    hot_keys.push(HotKey::new(&["R"], format!("rename {label}")));
+                    hot_keys.push(HotKey::new(&["r"], format!("rename {label}")));
                     hot_keys.push(HotKey::new(&["d"], format!("remove {label}")));
                 }
             }
@@ -107,7 +107,7 @@ impl App {
                     });
                 }
                 if hub {
-                    hot_keys.push(HotKey::new(&["R"], format!("rename {name}")));
+                    hot_keys.push(HotKey::new(&["r"], format!("rename {name}")));
                 }
                 hot_keys.push(HotKey::new(&["m"], format!("move {}", state.label(folder))));
             }
@@ -118,7 +118,7 @@ impl App {
                     format!("get {name} on this device"),
                 ));
                 if hub {
-                    hot_keys.push(HotKey::new(&["R"], format!("rename {}", state.label(id))));
+                    hot_keys.push(HotKey::new(&["r"], format!("rename {}", state.label(id))));
                 }
             }
             None => {}
@@ -130,7 +130,7 @@ impl App {
         if hub {
             hot_keys.push(HotKey::new(&["n"], "new share"));
         }
-        hot_keys.push(HotKey::new(&["r"], "refresh"));
+        hot_keys.push(HotKey::new(&["R"], "refresh"));
         hot_keys.push(HotKey::new(&["q"], "quit"));
 
         HotKeys(hot_keys)

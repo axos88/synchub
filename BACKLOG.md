@@ -154,7 +154,7 @@ Context:
   `api::config::Config<S>`; ~30 KB, a few ms on the sandbox). Verified 2026-10-24: the data of a
   `ConfigSaved` event (`/rest/events`) is exactly that object after the change.
 - Today the app re-reads both configs (this device's and the hub's) on every load: at start,
-  after each action, and on `r` (`app::state::State::read`).
+  after each action, and on `R` (`app::state::State::load`).
 - Commands read the config when they need it and exit, so a cache gains them nothing.
 
 Sketch: the client keeps the last config (e.g. behind a `Mutex`); a background thread long-polls

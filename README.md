@@ -191,7 +191,7 @@ and what - e.g. `(Enter, Space, s) share with laptop` - leaving out the others:
 | `d` | remove it from this device and the hub, once you confirm - the files stay | - | - |
 | `g` | gitignore it | gitignore its folder | - |
 | `a` | - | - | get it on this device |
-| `R` | rename it (on the hub and here) | rename the device (on the hub and here) | rename it on the hub |
+| `r` | rename it (on the hub and here) | rename the device (on the hub and here) | rename it on the hub |
 
 Moving opens a directory browser with the destination path above it. The
 path is the highlighted directory's (`./` is the one shown, `../` its
@@ -213,7 +213,7 @@ And anywhere: `n` shares a new directory (a form for the directory, the label
 and the devices; it starts in its directory browser - `j`/`k` move, Enter
 opens, `-` goes up, Space chooses the highlighted directory, `c` the current
 one, `~` or Ctrl-H home - and Space or a click on the directory field opens it
-again), `r` refreshes, `q` quits - also while the app loads or refreshes,
+again), `R` refreshes, `q` quits - also while the app loads or refreshes,
 without waiting for a slow hub. `j`/`k` or the arrow
 keys move; the mouse selects, double-click is Enter, the wheel scrolls.
 
