@@ -50,7 +50,9 @@ introduction accurate as the hub logic evolves.
     `show` drawing a field in its titled border - and `FormField::of` finds a kind again for a
     handle. The fields handle their own keys and clicks - a text field edits through a `TextInput` (`form/text_input.rs`:
     a cursor in characters; Left/Right, Home/End or Ctrl-A/E, Backspace and Delete at it, Ctrl-U
-    clears; long text scrolls to keep the cursor in view) - a directory field (read-only; `marking` gives its browser
+    clears; long text scrolls to keep the cursor in view; a click puts the cursor where it lands -
+    `FieldKind::mouse` gets the field's area from whoever routed the click, the form or the
+    prompt, and `place_cursor` works out the scroll as `shown` does, so the field records nothing) - a directory field (read-only; `marking` gives its browser
     the Syncthing folders to mark - new-share's does) runs the directory browser - and say
     whether they took them: an `EventResponse`; the form gets the ones they ignore),
     `dir_browser` (`target` is the path typed when choosing where to move something),

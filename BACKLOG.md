@@ -2,15 +2,16 @@
 
 Next free ID: D-16
 
-- D-7 · ~15 min · Join the real machines to the real hub (`synchub join`, needs the hub's API key)
-- D-12 · ~30 min · Drop `new_folder_path` once Syncthing resolves relative folder paths - blocked on syncthing#10937
-- D-14 · ~1 h · Text fields: a click doesn't move the cursor to where it lands
+By effort, smallest first; blocked items last.
+
 - D-15 · ~½ day · Drawing changes nothing: layout computed apart from rendering, clicks hit-tested on it
 - D-8 · ~½ day · Prune a big file from the hub after it's ignored (`synchub prune`?) - waiting for Ákos
 - D-11 · ~1 day · The app kept current by Syncthing's events: one event channel, a cached config
 - D-13 · ~1 day · A common interface for the app's components: sized, drawn, clickable - any child in a dialog
 - D-10 · ~1 day · Same folder labels and device names on every device: a rename anywhere spreads (needs D-3)
 - D-3 · ~1½ days · Background service: drops shares the hub stopped offering; later does gitignore too
+- D-7 · blocked · ~15 min · Join the real machines to the real hub - manual: Ákos runs `synchub join`
+- D-12 · blocked · ~30 min · Drop `new_folder_path` once Syncthing resolves relative paths - syncthing#10937
 
 ### D-3 · Background service: leftover shares, then gitignore
 
@@ -67,6 +68,8 @@ synchub is tested on a sandbox hub only. The real hub is https://syncthing.vandr
 (certificate SHA-256 ED:34:08:AC:AE:03:4C:F3:57:BC:45:6D:3B:30:C8:87:DA:45:65:7F:E7:F1:78:5F:38:
 72:7D:6E:14:AA:DC:1D, valid to 2027-05-14; device ID QIRKWUT-IDWX3B2-VQWCWIH-RA3D2AR-YIV2ZCM-
 EY5UYI5-LK5OYWL-DSVLSQV).
+
+**Blocked:** a manual task - Ákos runs it on each machine himself.
 
 Next: on each machine, `synchub join https://syncthing.vandra.hu:8384 <API key>` - it needs
 the hub's API key, which Ákos has. On a machine whose folders are shared directly with devices
@@ -252,24 +255,6 @@ Options discussed:
 
 Next step: Ákos to decide whether to go for the trait (and what it covers: size, drawing,
 clicks, keys) or the custom part only.
-
-### D-14 · Text fields: a click doesn't move the cursor
-
-Deferred by Ákos (2026-10-26). A text field has a cursor now (`components/form/text_input.rs`:
-`TextInput`, in characters; Left/Right, Home/End, Backspace/Delete at it), but a click only
-focuses the field (`TextField::mouse`, `components/form/field/text.rs`, returns `Handled`) - the
-cursor stays where it was. Same in the prompt dialog, which holds a `TextField`.
-
-What it takes: the click's column, minus the field's left border (`area.x + 1`), plus where the
-shown text starts - `TextInput::shown(width)` scrolls long text to keep the cursor in view, so the
-start isn't always 0 - clamped to the text's length, becomes the cursor. The field doesn't know
-its area when a click comes, so it would record it while drawing (like `ClickableList`, which
-keeps its last area in a `Cell`), and `TextInput` would remember the scroll start of its last
-`shown`, or offer `cursor_at(column, width)`. A test: `TextInput` placed at a column, with and
-without scrolling. If D-15 is done first, the field's area comes from its layout instead of
-being recorded while drawing.
-
-Next step: do it.
 
 ### D-15 · Drawing changes nothing: layout apart from rendering
 

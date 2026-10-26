@@ -57,9 +57,21 @@ impl TextInput {
     /// What of it fits in `width` columns with the cursor in view, and the
     /// cursor's column in that.
     pub fn shown(&self, width: usize) -> (String, usize) {
-        let start = (self.cursor + 1).saturating_sub(width.max(1));
+        let start = self.start(width);
         let shown = self.value.chars().skip(start).take(width).collect();
         (shown, self.cursor - start)
+    }
+
+    /// Puts the cursor at `column` of what [`shown`](Self::shown) shows in
+    /// `width` columns - after the last character, if that's past it.
+    pub fn place_cursor(&mut self, column: usize, width: usize) {
+        let len = self.value.chars().count();
+        self.cursor = (self.start(width) + column).min(len);
+    }
+
+    /// Where what's shown in `width` columns starts, in characters.
+    fn start(&self, width: usize) -> usize {
+        (self.cursor + 1).saturating_sub(width.max(1))
     }
 
     /// The byte offset of the character `at`.
@@ -122,5 +134,25 @@ mod tests {
         assert_eq!(input.shown(4), ("fgh".to_string(), 3));
         press(&mut input, &[KeyCode::Home]);
         assert_eq!(input.shown(4), ("abcd".to_string(), 0));
+    }
+
+    #[test]
+    fn a_column_places_the_cursor_in_what_is_shown() {
+        let mut input = TextInput::new("abcdef");
+        input.place_cursor(2, 10);
+        press(&mut input, &[KeyCode::Char('x')]);
+        assert_eq!(input.value(), "abxcdef");
+        // Past the end of the text: after it.
+        input.place_cursor(9, 10);
+        assert_eq!(input.shown(10), ("abxcdef".to_string(), 7));
+    }
+
+    #[test]
+    fn a_column_counts_from_where_scrolled_text_starts() {
+        // "abcdefgh" in 4 columns, the cursor at its end, shows "fgh".
+        let mut input = TextInput::new("abcdefgh");
+        input.place_cursor(1, 4);
+        press(&mut input, &[KeyCode::Char('x')]);
+        assert_eq!(input.value(), "abcdefxgh");
     }
 }

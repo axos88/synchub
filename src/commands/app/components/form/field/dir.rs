@@ -104,7 +104,7 @@ impl FieldKind for DirField {
         }
     }
 
-    fn mouse(&mut self, mouse: &MouseEvent) -> Result<EventResponse> {
+    fn mouse(&mut self, mouse: &MouseEvent, _area: Rect) -> Result<EventResponse> {
         if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
             self.choose()
         } else {

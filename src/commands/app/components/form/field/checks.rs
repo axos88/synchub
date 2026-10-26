@@ -106,7 +106,7 @@ impl<K> FieldKind for ChecksField<K> {
         Ok(EventResponse::Handled)
     }
 
-    fn mouse(&mut self, mouse: &MouseEvent) -> Result<EventResponse> {
+    fn mouse(&mut self, mouse: &MouseEvent, _area: Rect) -> Result<EventResponse> {
         match mouse.kind {
             MouseEventKind::ScrollUp => self.cursor = self.cursor.saturating_sub(1),
             MouseEventKind::ScrollDown => {

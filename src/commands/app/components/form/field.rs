@@ -66,8 +66,9 @@ pub trait FieldKind {
     /// A key while it has the focus.
     fn key(&mut self, key: KeyEvent) -> Result<EventResponse>;
 
-    /// A mouse event on it: a click focuses it, and does what Space does.
-    fn mouse(&mut self, mouse: &MouseEvent) -> Result<EventResponse>;
+    /// A mouse event on it, drawn at `area`: a click focuses it, and does
+    /// what Space does - in a text field, puts the cursor where it lands.
+    fn mouse(&mut self, mouse: &MouseEvent, area: Rect) -> Result<EventResponse>;
 
     /// Draws it in `area`, in its titled border - yellow while it has the
     /// focus.
@@ -160,8 +161,8 @@ impl Field {
         self.kind_mut().key(key)
     }
 
-    pub(super) fn mouse(&mut self, mouse: &MouseEvent) -> Result<EventResponse> {
-        self.kind_mut().mouse(mouse)
+    pub(super) fn mouse(&mut self, mouse: &MouseEvent, area: Rect) -> Result<EventResponse> {
+        self.kind_mut().mouse(mouse, area)
     }
 
     fn kind(&self) -> &dyn FieldKind {

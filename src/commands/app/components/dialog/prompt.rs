@@ -70,16 +70,17 @@ impl Prompt<'_> {
     const BUTTONS: [&'static str; 2] = ["[ OK ]", "[ Cancel ]"];
 
     /// A click on OK or Cancel presses it; on the field, focuses it.
-    fn mouse(&mut self, event: &Event) -> ControlFlow<Option<String>> {
+    fn mouse(&mut self, event: &Event) -> Result<ControlFlow<Option<String>>> {
         match clicked(&self.buttons, event) {
-            Some(0) => return self.press(Focus::Ok),
-            Some(_) => return self.press(Focus::Cancel),
+            Some(0) => return Ok(self.press(Focus::Ok)),
+            Some(_) => return Ok(self.press(Focus::Cancel)),
             None => {}
         }
-        if clicked(&[self.field_area], event).is_some() {
+        if let (Some(_), Event::Mouse(mouse)) = (clicked(&[self.field_area], event), event) {
             self.focus = Focus::Field;
+            self.field.mouse(mouse, self.field_area)?;
         }
-        ControlFlow::Continue(())
+        Ok(ControlFlow::Continue(()))
     }
 
     /// What Enter does from the field.
@@ -139,7 +140,7 @@ impl Window for Prompt<'_> {
 
     fn event(&mut self, event: Event) -> Result<ControlFlow<Option<String>>> {
         let Some(key) = terminal::pressed(&event) else {
-            return Ok(self.mouse(&event));
+            return self.mouse(&event);
         };
         if key.code == KeyCode::Esc || terminal::ctrl_c(&key) {
             return Ok(ControlFlow::Break(None));

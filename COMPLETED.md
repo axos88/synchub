@@ -67,3 +67,18 @@ the hub's labels and names are the reference now (`synchub sync`). So `share`/`u
 the sandbox with a device registered on the hub only ("Tablet"): `share aaa-new Tablet` shared
 it (the following `unshare` found it on the folder). Why not just accept any well-formed ID: the
 hub answers 200 to a folder's device list holding an ID it doesn't know, and drops it silently.
+### D-14 · Text fields: a click doesn't move the cursor
+
+2026-10-26: a click in a text field puts the cursor where it lands - in a form and in the
+prompt dialog; on the field's border it only focuses it, past the end of the text the cursor
+goes to the end. `FieldKind::mouse` takes the area the field was drawn at, passed by whoever
+routed the click (the form's layout, the prompt's `field_area`), so the field records nothing
+while drawing (in line with D-15); `TextInput::place_cursor(column, width)` works out where
+the shown text starts the way `shown(width)` does - from the cursor and the width - so it needs
+no remembered scroll position. The prompt now hands clicks on its field to the field (before,
+they only moved the focus there). Tests: `TextInput` with and without scrolling, `TextField`
+inside and on the border. On the sandbox: in the rename prompt, a click on the `t` of "Notes"
+then X gave "NoXtes", a click on the border kept the cursor, a click past the end put it there;
+in the new-share form's label field, "abcdef" then a click on its third character and X gave
+"abXcdef".
+

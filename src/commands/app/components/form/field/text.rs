@@ -3,7 +3,7 @@
 use anyhow::Result;
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::Rect;
+use ratatui::layout::{Margin, Position, Rect};
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Paragraph};
@@ -93,18 +93,23 @@ impl FieldKind for TextField {
         })
     }
 
-    fn mouse(&mut self, mouse: &MouseEvent) -> Result<EventResponse> {
-        Ok(if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-            EventResponse::Handled
-        } else {
-            EventResponse::Ignored
-        })
+    fn mouse(&mut self, mouse: &MouseEvent, area: Rect) -> Result<EventResponse> {
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return Ok(EventResponse::Ignored);
+        }
+        // On the border, it only focuses the field.
+        let text = area.inner(Margin::new(1, 1));
+        if text.contains(Position::new(mouse.column, mouse.row)) {
+            let column = usize::from(mouse.column - text.x);
+            self.input.place_cursor(column, usize::from(text.width));
+        }
+        Ok(EventResponse::Handled)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ratatui::crossterm::event::KeyCode;
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
     use super::*;
 
@@ -117,6 +122,32 @@ mod tests {
         press(KeyCode::Char('c'));
         assert!(matches!(press(KeyCode::Up), EventResponse::Ignored));
         assert_eq!(field.text(), "ac");
+    }
+
+    fn click(column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn a_click_puts_the_cursor_where_it_lands() {
+        // Drawn at (10, 5), 20 wide: the text starts at column 11, on row 6.
+        let area = Rect::new(10, 5, 20, 3);
+        let mut field = TextField::new().value("hello");
+        assert!(matches!(
+            field.mouse(&click(13, 6), area).unwrap(),
+            EventResponse::Handled
+        ));
+        field.key(KeyEvent::from(KeyCode::Char('X'))).unwrap();
+        assert_eq!(field.text(), "heXllo");
+        // On the border it only focuses: the cursor stays.
+        field.mouse(&click(10, 6), area).unwrap();
+        field.key(KeyEvent::from(KeyCode::Char('Y'))).unwrap();
+        assert_eq!(field.text(), "heXYllo");
     }
 
     #[test]

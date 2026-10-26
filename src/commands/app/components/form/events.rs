@@ -45,7 +45,10 @@ impl Form {
         let Some(i) = self.layout.iter().position(|area| area.contains(at)) else {
             return Ok(());
         };
-        if !matches!(self.fields[i].mouse(mouse)?, EventResponse::Ignored) {
+        if !matches!(
+            self.fields[i].mouse(mouse, self.layout[i])?,
+            EventResponse::Ignored
+        ) {
             self.focus = i;
         }
         Ok(())

@@ -232,7 +232,8 @@ needing the hub while the hub can't be reached. A refresh that fails says why
 the same way, and the app keeps showing what it last loaded. Questions are dialogs too, with
 buttons: removing asks you to confirm, renaming asks for the new name (Tab, or
 ↓ and ↑, moves between the name and the OK and Cancel buttons; Enter in the
-name presses the button chosen last). The status bar lists a dialog's keys. The log above the
+name presses the button chosen last). In a text field - there, or in a form - a
+click puts the cursor where it lands. The status bar lists a dialog's keys. The log above the
 status bar shows the commands that do the same from the command line - the
 last three, e.g. `$ synchub share sdbyy-l7snl laptop`.
 
