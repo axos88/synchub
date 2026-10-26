@@ -46,27 +46,23 @@ jobs:
           target: ${{ matrix.target }}
           args: --locked --release
           strip: true
-      - name: Package
+      # The binary alone, named by its platform: there's nothing else to ship.
+      - name: Name the binary
         shell: bash
         run: |
-          dir=synchub-${{ matrix.name }}
-          mkdir "$dir"
-          cp README.md LICENSE "$dir/"
           if [[ "${{ matrix.target }}" == *windows* ]]; then
-            cp "target/${{ matrix.target }}/release/synchub.exe" "$dir/"
-            7z a "$dir.zip" "$dir"
+            cp "target/${{ matrix.target }}/release/synchub.exe" "synchub-${{ matrix.name }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/synchub" "$dir/"
-            tar czf "$dir.tar.gz" "$dir"
+            cp "target/${{ matrix.target }}/release/synchub" "synchub-${{ matrix.name }}"
           fi
       - uses: actions/upload-artifact@v4
         with:
           name: synchub-${{ matrix.name }}
-          path: synchub-${{ matrix.name }}.*
+          path: synchub-${{ matrix.name }}*
       - if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: synchub-${{ matrix.name }}.*
+          files: synchub-${{ matrix.name }}*
 
   # A "latest" release that always holds the binaries of master's newest commit.
   latest:

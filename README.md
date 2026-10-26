@@ -79,19 +79,23 @@ always holds the binaries of the newest commit on master:
 
 | Platform | Download |
 |---|---|
-| Linux x86_64 | [synchub-linux-x86_64.tar.gz](https://github.com/axos88/synchub/releases/download/latest/synchub-linux-x86_64.tar.gz) |
-| Linux x86 (32-bit) | [synchub-linux-x86.tar.gz](https://github.com/axos88/synchub/releases/download/latest/synchub-linux-x86.tar.gz) |
-| Linux arm64 | [synchub-linux-arm64.tar.gz](https://github.com/axos88/synchub/releases/download/latest/synchub-linux-arm64.tar.gz) |
-| macOS x86_64 | [synchub-macos-x86_64.tar.gz](https://github.com/axos88/synchub/releases/download/latest/synchub-macos-x86_64.tar.gz) |
-| macOS arm64 | [synchub-macos-arm64.tar.gz](https://github.com/axos88/synchub/releases/download/latest/synchub-macos-arm64.tar.gz) |
-| Windows x86_64 | [synchub-windows-x86_64.zip](https://github.com/axos88/synchub/releases/download/latest/synchub-windows-x86_64.zip) |
+| Linux x86_64 | [synchub-linux-x86_64](https://github.com/axos88/synchub/releases/download/latest/synchub-linux-x86_64) |
+| Linux x86 (32-bit) | [synchub-linux-x86](https://github.com/axos88/synchub/releases/download/latest/synchub-linux-x86) |
+| Linux arm64 | [synchub-linux-arm64](https://github.com/axos88/synchub/releases/download/latest/synchub-linux-arm64) |
+| macOS x86_64 | [synchub-macos-x86_64](https://github.com/axos88/synchub/releases/download/latest/synchub-macos-x86_64) |
+| macOS arm64 | [synchub-macos-arm64](https://github.com/axos88/synchub/releases/download/latest/synchub-macos-arm64) |
+| Windows x86_64 | [synchub-windows-x86_64.exe](https://github.com/axos88/synchub/releases/download/latest/synchub-windows-x86_64.exe) |
 
-The Linux binaries are static, so they run on any distribution. For example:
+Each is the program itself, nothing to unpack. The Linux binaries are static,
+so they run on any distribution. On Linux or macOS, put it on your `PATH` as
+`synchub` and make it executable, e.g.:
 
 ```sh
-curl -L https://github.com/axos88/synchub/releases/download/latest/synchub-linux-x86_64.tar.gz | tar xz
-install synchub-linux-x86_64/synchub ~/.local/bin/
+curl -Lo ~/.local/bin/synchub https://github.com/axos88/synchub/releases/download/latest/synchub-linux-x86_64
+chmod +x ~/.local/bin/synchub
 ```
+
+On Windows, save it as `synchub.exe` in a directory on your `PATH`.
 
 Or build it: `cargo install --git https://github.com/axos88/synchub`.
 

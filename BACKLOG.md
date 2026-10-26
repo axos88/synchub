@@ -3,8 +3,7 @@
 Next free ID: D-16
 
 - D-7 · ~15 min · Join the real machines to the real hub (`synchub join`, needs the hub's API key)
-- D-12 · ~30 min · Drop `new_folder_path` once Syncthing resolves relative folder paths - waiting for upstream
-- D-6 · ~30 min · Run the build workflow (binaries + rolling "latest" release): needs a push
+- D-12 · ~30 min · Drop `new_folder_path` once Syncthing resolves relative folder paths - blocked on syncthing#10937
 - D-14 · ~1 h · Text fields: a click doesn't move the cursor to where it lands
 - D-15 · ~½ day · Drawing changes nothing: layout computed apart from rendering, clicks hit-tested on it
 - D-8 · ~½ day · Prune a big file from the hub after it's ignored (`synchub prune`?) - waiting for Ákos
@@ -61,23 +60,6 @@ Decided (Ákos, 2026-10-22):
   index, so they'd need polling or a file watcher of their own.
 
 Next: build it - config option, the detection, the service management.
-
-### D-6 · Run the build workflow
-
-`.github/workflows/build.yml` builds Linux x86_64/x86/arm64 (static musl, via cross), macOS
-x86_64/arm64 and Windows x86_64 on every push to master (artifacts on the run page) and attaches
-them to the release of a `v*` tag; a `check` job runs fmt, clippy -D warnings and the tests.
-After every push to master, the `latest` job replaces the "latest" pre-release (tag `latest`,
-moved to the commit) with that commit's archives; README's install links point to
-https://github.com/axos88/synchub/releases/download/latest/<archive> until proper releases.
-Verified locally: the YAML parses, the check job's commands pass. Not verified: the builds
-themselves - a local musl build fails only for lack of `x86_64-linux-musl-gcc`, which cross's
-images provide.
-
-Next: Ákos commits and pushes (or asks for it); then check the run and fix any target that
-fails, or drop it if it's a pain (Ákos: "leave them out").
-If ring fails to build for Windows or macOS, switch TLS to a pure-Rust rustls provider
-(`rustls-pure`, TLS 1.3 only) - Ákos's decision, see D-5 in COMPLETED.md.
 
 ### D-7 · Join the real machines to the real hub
 
@@ -211,11 +193,33 @@ left there would be taken over). Auto-accept does it properly, server side.
 `api-folder-default-path`, commit 3b89afed; it replaced an earlier auto-accept-style attempt):
 when a folder is created through `POST /rest/config/folders` or `PUT .../{id}`, a relative path
 is resolved against the default folder path instead of Syncthing's working directory, and one
-that exists and isn't an empty directory is refused with 409. Not yet proposed upstream:
-Syncthing takes no unsolicited PRs and no mostly-AI-written code - an issue first, written by the
-maintainer.
+that exists and isn't an empty directory is refused with 409. Syncthing takes no unsolicited PRs
+and no mostly-AI-written code, so it went upstream as an issue, written by the maintainer.
 
-Next step: Ákos to open the issue upstream. If it's released, `HubClient::create_folder`
+**Blocked on the upstream issue:** https://github.com/syncthing/syncthing/issues/10937 (opened
+2026-10-23). Two maintainers replied (2026-10-24): relative paths resolving against the working
+directory is intentional (portable installs, one config shared between OSes); a script should
+read the default folder path from the API and build an absolute path itself - as synchub does.
+Closed as "not planned" by calmh 2026-10-25, before Ákos could answer. Ákos is pushing back
+(2026-10-26): resolve against the default folder path only when one is set (a fresh config's is
+empty, so portable installs see no change); absolute paths couple API clients to the server's
+filesystem; and a bug found while testing - with a default folder path set, a folder added
+without a `path` gets that directory itself as its root, so it holds every auto-accepted folder
+under it and shares them, both ways, with whatever device it's shared with (reproduced on v2.1.7
+with three devices; the script and its output are in the comment).
+Their answer (2026-10-26): changing what a non-absolute path means would be a breaking API change
+- with over a million users, someone depends on every detail of the current contract - so it
+won't change "at this stage of development". It didn't address an opt-in (a new query parameter
+leaves today's contract as it is) or the no-path bug, which isn't about relative paths; Ákos to
+ask about an opt-in, and to report the bug on its own (a separate issue, or privately).
+
+Until that's settled synchub keeps `new_folder_path` and always sends a path (never none: that's
+the bug above). A possible step meanwhile: before creating a hub folder, ask the hub's
+`/rest/system/browse` whether the directory exists, and refuse if it does (it lists directories
+only, so it can't tell an empty one from a full one).
+
+Next step: follow the issue - only an opt-in can still unblock this; if none is accepted, drop D-12
+(synchub keeps `new_folder_path`). If one is released, `HubClient::create_folder`
 (`src/client/hub.rs`), `new::create` and `commands::convert::convert` send the folder ID as a
 relative path (a 409 means the directory is taken), and `new_folder_path` goes - only when every
 hub runs that release (check its version first).

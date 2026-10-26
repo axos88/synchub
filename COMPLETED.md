@@ -45,6 +45,19 @@ rustls uses ring, installed as the default provider in main.rs, reqwest built wi
 macOS - then switch to `rustls-pure` (the provider is set in `src/commands/hub/tls.rs` and
 `src/main.rs`); D-6 checks this on the first CI run.
 
+### D-6 · Run the build workflow
+
+2026-10-26 (checked): it ran on the push of `bff0558` (2026-10-24, run 40128402328, 4m09s) and
+every job passed - `check` (fmt, clippy -D warnings, tests) and the six builds: Linux x86_64, x86
+and arm64 (static musl, via cross), macOS x86_64 and arm64, Windows x86_64. The `latest` job
+published them as the "latest" pre-release (tag `latest` at `bff0558`, six archives of 2.9-3.7
+MB). README's install links (`releases/download/latest/<archive>`) all answer 200. ring built
+on every target, so the pure-Rust TLS fallback (D-5) isn't needed, and no target had to be
+dropped. Later pushes re-run it and move `latest` along.
+2026-10-26: the release holds the bare binaries now (`synchub-<platform>`, `.exe` on Windows),
+not archives with README and LICENSE (Ákos: it's one file); README links them, with `chmod +x`
+for Linux/macOS. Those links resolve once the workflow has run on the next push.
+
 ### D-9 · Naming a device this device doesn't know yet
 
 2026-10-24: resolved by the maintainer's call - a FOLDER/DEVICE argument is looked up here first,
