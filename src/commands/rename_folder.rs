@@ -39,5 +39,6 @@ pub fn run(args: Args) -> Result<()> {
 /// labels and names here.
 pub fn rename(id: &FolderId, label: &str) -> Result<()> {
     client::hub()?.rename_folder(id, label)?;
-    sync::sync()
+    sync::sync(client::hub()?)?;
+    Ok(())
 }

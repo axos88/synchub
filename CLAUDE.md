@@ -217,9 +217,15 @@ introduction accurate as the hub logic evolves.
   Both live in `src/client/local/error.rs` (re-exported from `client::local`); their `Display`
   and `Error` come from `derive_more`.
 - Names: the hub's folder labels and device names are the reference. A command changing them
-  changes the hub only, then runs `commands::sync::sync()`, which compares the hub's with this
-  device's and takes the hub's here (`synchub sync`; each folder/device on its own, failures
-  collected). In a dry run the hub isn't changed, so the sync after it has nothing to show.
+  changes the hub only, then runs `commands::sync::sync(hub)`, which compares the hub's with this
+  device's: where they differ the hub's is taken here; where the hub's is empty, this device's is
+  set on the hub (Ákos's rule, 2026-10-26; `synchub sync`; each folder/device on its own,
+  failures collected). It takes the hub as a parameter, like `convert`: `client::hub()` runs it
+  on first connecting (`sync::on_connect`, which warns instead of failing - a name that can't be
+  set mustn't stop the command), and so does `join`; the app's load runs it on every reload,
+  before reading this device's configuration. No background service: a device takes a rename the
+  next time synchub runs there. In a dry run the hub isn't changed, so the sync after a rename
+  has nothing to show.
 - Dry run (`-n`) is global, `settings::dry_run()`: the client's operations then only `say!`
   "would ..."; what's done outside the API (moving directories, writing files, deleting) checks
   it too. Nothing takes a dry-run argument.

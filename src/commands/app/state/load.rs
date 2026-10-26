@@ -10,6 +10,7 @@ use super::{
 };
 use crate::api;
 use crate::client::{self, Client, HubClient};
+use crate::commands::sync;
 use crate::device_id::DeviceId;
 use crate::settings;
 use crate::side::{self, Local};
@@ -25,24 +26,27 @@ impl State {
             local.address()
         );
         let my_id = local.my_id()?;
+        // Before client::hub: moving folders over to the hub reconnects to it.
+        let connected = local.connected_devices()?;
+        let hub_settings = settings::get()?.hub;
+        // Before this device's configuration is read: syncing can rename things here.
+        let reached = hub_settings.as_ref().map(|_| reach_hub());
         let local_config = local.config()?;
         let mut names: BTreeMap<DeviceId, String> = local_config
             .devices
             .iter()
             .map(|d| (d.id.clone(), d.display()))
             .collect();
-        // Before client::hub: moving folders over to the hub reconnects to it.
-        let connected = local.connected_devices()?;
         let me = SyncthingInfo {
             device_id: my_id.clone(),
             name: names.get(&my_id).cloned().unwrap_or_default(),
             address: local.address().to_string(),
             version: local.version().ok(),
         };
-        let (hub, hub_config) = match settings::get()?.hub {
+        let (hub, hub_config) = match hub_settings.zip(reached) {
             None => (None, None),
-            Some(settings) => {
-                let (hub, config) = hub(&settings, &names, &connected);
+            Some((settings, reached)) => {
+                let (hub, config) = hub(&settings, reached, &names, &connected);
                 (Some(hub), config)
             }
         };
@@ -87,14 +91,15 @@ impl State {
     }
 }
 
-/// The hub set up in `settings`, and - if it can be reached - its
+/// The hub set up in `settings`, and - if it was `reached` - its
 /// configuration.
 fn hub(
     settings: &settings::Hub,
+    reached: Result<(&'static HubClient, api::config::Config<side::Hub>)>,
     names: &BTreeMap<DeviceId, String>,
     connected: &[DeviceId],
 ) -> (HubInfo, Option<api::config::Config<side::Hub>>) {
-    let (api, config) = match reach_hub() {
+    let (api, config) = match reached {
         Ok((client, config)) => {
             let version = client.version().ok();
             (HubApi::Reachable { version }, Some(config))
@@ -111,9 +116,12 @@ fn hub(
     (info, config)
 }
 
-/// Connects to the hub, and reads its configuration.
+/// Connects to the hub, takes its labels and names here - and gives it this
+/// device's where it has none (connecting the first time does it too) - and
+/// reads its configuration.
 fn reach_hub() -> Result<(&'static HubClient, api::config::Config<side::Hub>)> {
     let client = client::hub()?;
+    sync::on_connect(client);
     step!(Hub, "reading its folders and devices");
     Ok((client, client.config()?))
 }

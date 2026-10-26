@@ -40,5 +40,6 @@ pub fn run(args: Args) -> Result<()> {
 /// labels and names here.
 pub fn rename(id: &DeviceId, name: &str) -> Result<()> {
     client::hub()?.rename_device(id, name)?;
-    sync::sync()
+    sync::sync(client::hub()?)?;
+    Ok(())
 }

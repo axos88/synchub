@@ -67,6 +67,25 @@ the hub's labels and names are the reference now (`synchub sync`). So `share`/`u
 the sandbox with a device registered on the hub only ("Tablet"): `share aaa-new Tablet` shared
 it (the following `unshare` found it on the folder). Why not just accept any well-formed ID: the
 hub answers 200 to a folder's device list holding an ID it doesn't know, and drops it silently.
+### D-10 · Same folder labels and device names on every device
+
+2026-10-26, without the D-3 service (Ákos: it isn't needed for this). Ákos's rule: renaming
+renames on the hub; when syncing, where the two differ the hub's is taken, and where the hub has
+none, this device's is given to the hub. `commands::sync::sync(hub)` does that for the folders
+and devices both have (this device's own name included), each on its own, failures collected;
+it takes the hub as a parameter, like `convert`, since it runs while `client::hub()` is being
+made. It runs on first connecting to the hub (`sync::on_connect`: warns instead of failing),
+in `join`, after `rename-folder`/`rename-device`, and on every load of the app (Ákos: also on
+every reload) - before this device's configuration is read, so the screen shows the new names.
+`synchub sync` runs it on its own, and says when there was nothing to do. Settled on the way:
+a rename in a leaf's own web UI is replaced by the hub's (the hub is the reference); `join`
+adopts the hub's names; renames reach a device the next time synchub runs there. Test: the
+rule's five cases. On the sandbox: with Notes relabelled and L1 renamed on the hub, and Proj1's
+label and L2's name cleared there, `synchub -n list` on L3 said what it would do and changed
+nothing; `synchub list` took NotesHub and L1hub on L3 and gave the hub Proj1 and L2; a second
+run renamed nothing; with the app open, relabelling Notes on the hub showed after Ctrl-R, and
+L3's own label followed.
+
 ### D-14 · Text fields: a click doesn't move the cursor
 
 2026-10-26: a click in a text field puts the cursor where it lands - in a form and in the

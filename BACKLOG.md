@@ -1,14 +1,14 @@
 # Backlog
 
-Next free ID: D-16
+Next free ID: D-17
 
 By effort, smallest first; blocked items last.
 
 - D-15 · ~½ day · Drawing changes nothing: layout computed apart from rendering, clicks hit-tested on it
+- D-16 · ~½ day · Hovering highlights buttons and the status bar's hot keys; hot keys clickable like buttons
 - D-8 · ~½ day · Prune a big file from the hub after it's ignored (`synchub prune`?) - waiting for Ákos
 - D-11 · ~1 day · The app kept current by Syncthing's events: one event channel, a cached config
 - D-13 · ~1 day · A common interface for the app's components: sized, drawn, clickable - any child in a dialog
-- D-10 · ~1 day · Same folder labels and device names on every device: a rename anywhere spreads (needs D-3)
 - D-3 · ~1½ days · Background service: drops shares the hub stopped offering; later does gitignore too
 - D-7 · blocked · ~15 min · Join the real machines to the real hub - manual: Ákos runs `synchub join`
 - D-12 · blocked · ~30 min · Drop `new_folder_path` once Syncthing resolves relative paths - syncthing#10937
@@ -19,10 +19,12 @@ The maintainer (2026-10-23): a background process, installed and started when a 
 the hub (`synchub join`), removes from this device the shares the hub used to offer it but
 doesn't any more - so a share removed on the hub (`synchub remove`, or unshared from this
 device) disappears from every device without anyone running a command there. The same process
-later takes over gitignore (below), and keeps folder labels and device names the same everywhere
-(D-10). Not at app start: the service does it. Not implemented yet.
+later takes over gitignore (below). (Keeping labels and names the same everywhere doesn't need it:
+D-10 does that whenever synchub connects to the hub.) Not at app start: the service does it. Not
+implemented yet.
 
 Decided (2026-10-23):
+- Detecting a removal: this device shares the folder with the hub, but the hub doesn't share it
 - Detecting a removal: this device shares the folder with the hub, but the hub doesn't share it
   with this device. (`synchub new` adds the folder here and then on the hub - shared back with
   this device - in one go, so that state is only momentary there; don't act on it mid-`new`.)
@@ -91,43 +93,16 @@ Options offered:
    the hub's disk - needs shell (SSH) access to the hub; the leaves keep theirs.
 Also: old versions on the hub live in its .stversions and go only by the versioning settings.
 
-Next: Ákos picks one (recommended: 1, e.g. `synchub prune PATH`), or drops it.
+3. Ákos (2026-10-26): pause all shares on the hub, remove the .stignore files, push the removal
+   of all the ignored files to the hub, put the .stignore files back and resume all folders.
+   To work out before building it: Syncthing propagates a deletion only for a file whose
+   deletion it scanned - so the ignored files must exist where the deletion is made (a leaf
+   that never had them can't delete them), and deleting them there loses that copy unless it's
+   moved aside first (as in 1); while the hub's folders are paused, no deletion reaches it, so
+   something has to be resumed for the push; and the other leaves would get the deletions too.
 
-### D-10 · Same folder labels and device names on every device
-
-The maintainer (2026-10-24): another job of synchub is keeping folder labels and device names
-in sync - every folder is labelled, and every device named, the same way on all devices, and
-changing one on any device (web UI, `synchub rename-folder`/`rename-device`, the app) spreads to
-all of them. Not implemented yet.
-
-What Syncthing does (verified in the sandbox, v2.1.7, 2026-10-23): a folder's label and a
-device's name are each device's own; changing them on one Syncthing doesn't reach the others.
-Each change emits one `ConfigSaved` event on the instance changed - its data is the whole
-configuration, there's no "label/name changed" event - and nothing on the other devices.
-
-Today (2026-10-24): `synchub sync` (`commands::sync::sync`) takes the hub's labels and names on
-this device - the hub-to-leaf half, run by hand. `rename-folder` and `rename-device` change the
-hub only, then run it; the other leaves take the new names when they `synchub sync`. Left: the
-service running it when the hub's config changes, and the leaf-to-hub half (a rename made in a
-leaf's web UI).
-
-A sketch, part of the D-3 service (it watches the event streams anyway):
-- The hub's labels and names are the reference.
-- On this device's own stream: on `ConfigSaved`, compare labels/names with the last ones seen;
-  one changed here (e.g. in the web UI) is set on the hub too.
-- On the hub's stream: one changed there is set here - which is how a rename made on any leaf
-  reaches all the others (that leaf's service puts it on the hub first).
-- At start, and whenever the hub's connection comes back: take the hub's labels/names.
-- Only folders the hub has, and devices both know; a leaf's own folders stay as they are.
-
-To decide at the implementation:
-- Conflicts: renamed on two devices at once, or on a leaf while it was offline - the hub's wins
-  at reconnect, or the newest? (Syncthing keeps no timestamp per label.)
-- A device's own name (its entry for itself, which its web UI shows as "Device Name") - synced
-  too, so a device is called the same on itself as everywhere else?
-- `synchub join`: whether joining adopts the hub's labels/names, overwriting this device's.
-- Whether `rename-*` keep changing the hub and here directly, or only one place and let the
-  service spread it.
+Next: Ákos picks one (recommended: 1, e.g. `synchub prune PATH`; 3 once its open points are
+settled), or drops it.
 
 ### D-11 · The app kept current by events: one event channel, a cached config
 
@@ -299,3 +274,26 @@ Rejected as the smaller step: drawing through `&mut self` everywhere, dropping o
 
 Next step: take it up together with D-13.
 
+### D-16 · Hover highlights buttons and hot keys; hot keys are clickable
+
+Ákos (2026-10-26): moving the mouse over a button - e.g. a dialog's OK, focused or not - should
+change how it looks, and so should the status bar's hot keys. Clicking buttons works; the hot
+keys aren't buttons yet - clicking one should do what its key does.
+
+What's there: `terminal::start` turns on crossterm's `EnableMouseCapture`, which includes
+any-motion tracking, so moving the mouse comes as `MouseEventKind::Moved` events; nothing uses
+them yet. Buttons are drawn by `components/dialog/draw.rs` (`buttons_line`: the focused or
+chosen one on yellow or cyan), and their areas come back in `Drawn::buttons` for clicks.
+`components/status_bar.rs` draws `HotKeys` as plain text (`lines`), recording no areas.
+
+What it takes:
+- A hovered button: the window keeps the mouse's last position (from `Moved`), and drawing a
+  button under it styles it - a third look, distinct from focused (yellow) and chosen (cyan).
+- Hot keys as buttons: the status bar says where each `HotKey` landed; a click on one becomes
+  its first key, handed to the window as if pressed; hovered, it's highlighted like a button.
+- Where the areas come from ties in with D-15 (layout apart from drawing): with it, hovering
+  and clicking hit-test the layout instead of what drawing recorded; best done with or after
+  D-15 and D-13.
+
+Next step: decide the hover look (e.g. underlined, or reversed), then do it - after D-15/D-13,
+or on today's recorded areas if it's wanted sooner.

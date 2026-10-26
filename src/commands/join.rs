@@ -3,8 +3,8 @@
 use anyhow::{Result, bail};
 
 use crate::client::{self, Client, ClientBuilder, HubClient};
-use crate::commands::convert;
 use crate::commands::{Arguments, flag, option};
+use crate::commands::{convert, sync};
 use crate::device_id::DeviceId;
 use crate::device_id::identicon;
 use crate::prompt;
@@ -120,6 +120,7 @@ pub fn join_hub(hub: settings::Hub, default_folders_dir: Option<&str>) -> Result
     local.set_folder_defaults(&my_id, default_folders_dir)?;
     register_with_hub(&client, &my_id)?;
     convert::convert(&client)?;
+    sync::on_connect(&client);
     settings::update(|settings| settings.hub = Some(hub))?;
     say!("Run `synchub` to choose this device's folders.");
     Ok(())

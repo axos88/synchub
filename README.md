@@ -35,12 +35,14 @@ replace Syncthing, and every setting it changes is visible in the web UI.
   leaves accept nothing from anyone but the hub. Removing a device from a
   folder happens on the hub first - otherwise the hub offers the folder
   again, and the leaf accepts it again.
-- Names are the same everywhere *(planned)*: Syncthing lets every device
-  label each folder and name each device its own way. synchub is to keep
-  them the same on all devices - renaming a folder or a device on one device
-  renames it on all of them. Today `synchub rename-folder` and
-  `rename-device` rename on the hub and then `synchub sync` the device they
-  run on; the other devices take the new names when they `synchub sync`.
+- Names are the same everywhere: Syncthing lets every device label each
+  folder and name each device its own way. synchub keeps them the same: the
+  hub's labels and names are the reference. Renaming (`synchub rename-folder`,
+  `rename-device`, or `r` in the app) renames on the hub; every time synchub
+  connects to the hub - any command that uses it, and every reload of the app -
+  it takes the hub's names on that device, and gives the hub that device's
+  where the hub has none. A device takes a rename the next time synchub runs
+  there; a rename made in a device's own web UI is replaced by the hub's.
 
 ### Fewer conflicts
 
@@ -264,7 +266,7 @@ Everything the app does is also a command, for scripts:
 | `synchub unshare FOLDER DEVICE` | Has the hub stop sharing a folder with a device; it keeps its copy until it removes it. |
 | `synchub rename-folder FOLDER LABEL` | Gives a folder a new label on the hub, then syncs (below). Directories keep their names. |
 | `synchub rename-device DEVICE NAME` | Renames a device on the hub, then syncs (below). |
-| `synchub sync` | Takes the hub's folder labels and device names on this device - for the folders and devices both have, this one included, empty ones too. Every Syncthing keeps its own label for each folder and name for each device; this makes this device's the hub's. |
+| `synchub sync` | Takes the hub's folder labels and device names on this device - for the folders and devices both have, this one included - and gives the hub this device's where the hub's is empty. Every Syncthing keeps its own label for each folder and name for each device; this makes them the same. It runs whenever synchub connects to the hub, and on every reload of the app; this runs it on its own. |
 
 FOLDER is a folder's ID or label on the hub, or the directory of a folder this
 device has (meaning the hub's folder with the same ID); `mv`, `overwrite` and

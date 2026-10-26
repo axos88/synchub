@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 
 use super::{Client, ClientBuilder};
 use crate::client;
-use crate::commands::convert;
+use crate::commands::{convert, sync};
 use crate::device_id::DeviceId;
 use crate::folder_id::FolderId;
 use crate::settings;
@@ -35,6 +35,7 @@ fn connect() -> Result<HubClient> {
     })?;
     let client = HubClient::connect(&hub.url, &hub.api_key, &hub.device_id)?;
     convert::convert(&client)?;
+    sync::on_connect(&client);
     Ok(client)
 }
 
