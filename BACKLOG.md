@@ -8,8 +8,8 @@ By effort, smallest first; blocked items last.
 - D-16 · ~½ day · Hovering highlights buttons and the status bar's hot keys; hot keys clickable like buttons
 - D-8 · ~½ day · Prune a big file from the hub after it's ignored (`synchub prune`?) - waiting for Ákos
 - D-11 · ~1 day · The app kept current by Syncthing's events: one event channel, a cached config
-- D-13 · ~1 day · A common interface for the app's components: sized, drawn, clickable - any child in a dialog
 - D-3 · ~1½ days · Background service: drops shares the hub stopped offering; later does gitignore too
+- D-13 · ~1½-2 days · A component tree: one trait for every part, retained UI state, pure layout (with D-15)
 - D-7 · blocked · ~15 min · Join the real machines to the real hub - manual: Ákos runs `synchub join`
 - D-12 · blocked · ~30 min · Drop `new_folder_path` once Syncthing resolves relative paths - syncthing#10937
 
@@ -228,8 +228,40 @@ Options discussed:
   plus a way to report clickable areas (and maybe its keys, for the status bar), implemented by
   the dialog's parts and the other components; dialogs (and pages) holding `Vec<Box<dyn …>>`.
 
-Next step: Ákos to decide whether to go for the trait (and what it covers: size, drawing,
-clicks, keys) or the custom part only.
+Decided (Ákos, 2026-10-27), then punted ("let's punt on this"):
+- **A component tree**, not just a custom dialog part: one `Component` trait for every part (text,
+  buttons, fields, the list, the tree, the info panels), containers (dialog, form, pages) holding
+  children, and D-15 folded in - a pure `layout(&self, area) -> Vec<Rect>` used both to draw and
+  to hit-test, so drawing changes nothing. Sketch:
+  `size(&self, room) -> Size`, `draw(&self, frame, area, focus)` (pure), `key(&mut self, key)`
+  and `mouse(&mut self, gesture, area)` returning `Response<Self::Message>`.
+- **Typed messages:** each component has `type Message`; key/mouse return
+  `Response::Handled | Ignored | Message(m)`, and the parent maps its children's messages to its
+  own (as `TreeResponse::Activated(Key)` and `Gesture` do today, made general).
+- **Step by step**, each step building, tested, checked on the sandbox and reviewable on its own:
+  1) the trait, `Response` and pure layout, `Window::event` getting the screen's area;
+  2) dialogs and their parts; 3) the form and its fields; 4) the list, tree and browser;
+  5) the main page and the info panels. Old and new coexist in between.
+- **Two kinds of data** (Ákos): the application model isn't part of a component; a component's
+  own UI state (focus, selection, scroll) is, and the component owns it. So no copying a
+  derived "view" of the model into the component.
+- **Hot keys aren't to be baked into the trait** (Ákos: they're application-specific): the
+  trait must be extendable.
+
+Open when it's picked up again:
+- How hot keys extend the trait: a subtrait for the app (`trait AppComponent: Component { fn
+  hot_keys(&self) -> HotKeys; }`, containers generic over the child type, the core knowing
+  nothing of them) - Claude's recommendation - or generic key bindings in the trait
+  (`fn bindings(&self) -> Vec<Binding>`, the status bar being one way of showing them; D-16's
+  clickable hot keys would follow).
+- How the model reaches a component that shows it: passed in on each call, typed per component
+  (`type Model`: the tree's the `State`, a button's `()`) - Claude's recommendation - or a shared
+  `Rc<State>` the page hands the component on each reload, read but not owned.
+
+Effort: ~1½-2 days with D-15 (the app is ~5,100 lines; it touches 8 windows, the 3 field kinds,
+the dialogs' parts, the tree, the list and the directory browser).
+
+Next step: Ákos to settle the two open points; then step 1.
 
 ### D-15 · Drawing changes nothing: layout apart from rendering
 

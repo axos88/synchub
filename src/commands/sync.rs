@@ -1,5 +1,10 @@
 //! `synchub sync`: take the hub's folder labels and device names here, and
-//! give the hub this device's where it has none.
+//! give the hub this device's where it has none; and have every folder here
+//! include its shared ignore list.
+
+mod ignores;
+
+pub use ignores::include as include_shared_ignores;
 
 use anyhow::{Result, bail};
 
@@ -11,13 +16,19 @@ use crate::folder_id::FolderId;
 use crate::side::{Hub, Local};
 use crate::{say, step, warn};
 
-/// Take the hub's folder labels and device names here; give it this device's where it has none
+/// Take the hub's labels and names here, and have every folder include its shared ignore list
 ///
 /// Every device keeps its own label for each folder and its own name for
 /// each device. sync gives this device's folders the labels the hub has for
 /// them, and the devices both know - this one included - the names the hub
 /// has for them. Where the hub's is empty, the hub takes this device's.
 /// Folders and devices only one of them has are left alone.
+///
+/// It also has every folder here include `.stignore-shared` from its
+/// `.stignore`: a synced list of ignore patterns, the same on every device
+/// (`.stignore` itself isn't synced). Where no device has the list yet, it's
+/// created; where another device's is still on its way, it's included once
+/// it has arrived.
 ///
 /// It runs whenever synchub connects to the hub, and on every reload of the
 /// app; this runs it on its own.
@@ -36,7 +47,7 @@ pub fn run(_args: Args) -> Result<()> {
     if !sync(client::hub()?)? {
         say!(
             Local,
-            "the folder labels and device names are the hub's already"
+            "the labels, names and shared ignore lists are in step already"
         );
     }
     Ok(())
@@ -52,8 +63,17 @@ pub fn on_connect(hub: &HubClient) {
 }
 
 /// Gives this device's folders and devices the hub's labels and names, and
-/// the hub this device's where it has none; whether anything changed.
+/// the hub this device's where it has none; and has every folder here include
+/// its shared ignore list. Whether anything changed.
 pub fn sync(hub: &HubClient) -> Result<bool> {
+    let renamed = names(hub);
+    let included = ignores::include_everywhere();
+    // Both run first: one failing mustn't leave the other undone.
+    Ok(renamed? | included?)
+}
+
+/// The labels and names; whether any changed.
+fn names(hub: &HubClient) -> Result<bool> {
     let local = client::local()?;
     step!(Hub, "reading its folder labels and device names");
     let (local_config, hub_config) = (local.config()?, hub.config()?);

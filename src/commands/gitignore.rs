@@ -5,18 +5,15 @@ mod stignore;
 mod translate;
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use itertools::Itertools;
 
 use crate::api;
 use crate::client;
 use crate::commands::Arguments;
 use crate::paths;
-use crate::settings;
 use crate::side::Local;
 use crate::{say, step};
 
@@ -112,8 +109,8 @@ fn update(
     let root = folder.local_path();
     let synced_file = root.join(stignore::FILE_NAME);
     let local_file = root.join(stignore::LOCAL_FILE_NAME);
-    let previous_synced = read_to_string_if_exists(&synced_file)?;
-    let previous_local = read_to_string_if_exists(&local_file)?;
+    let previous_synced = paths::read_if_exists(&synced_file)?;
+    let previous_local = paths::read_if_exists(&local_file)?;
     let theirs: Vec<(&PathBuf, &repo::Ignores)> = ignores
         .iter()
         .filter(|(repo, _)| folder.overlaps(repo))
@@ -221,7 +218,7 @@ fn unchanged(previous: &Option<String>, content: &str) -> &'static str {
 /// local one.
 fn include_list(root: &Path) -> Result<()> {
     let file = root.join(".stignore");
-    let current = read_to_string_if_exists(&file)?;
+    let current = paths::read_if_exists(&file)?;
     let updated = stignore::with_include(current.as_deref().unwrap_or_default());
     write_if_changed(&file, current.as_deref(), &updated)
 }
@@ -245,22 +242,5 @@ fn write_if_changed(file: &Path, current: Option<&str>, content: &str) -> Result
     if current == Some(content) {
         return Ok(());
     }
-    write(file, content)
-}
-
-fn write(file: &Path, content: &str) -> Result<()> {
-    if settings::dry_run() {
-        say!(Local, "would write {}", file.display());
-        return Ok(());
-    }
-    step!(Local, "writing {}", file.display());
-    fs::write(file, content).with_context(|| format!("can't write {}", file.display()))
-}
-
-fn read_to_string_if_exists(file: &Path) -> Result<Option<String>> {
-    match fs::read_to_string(file) {
-        Ok(text) => Ok(Some(text)),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(err) => Err(err).with_context(|| format!("can't read {}", file.display())),
-    }
+    paths::write(file, content)
 }

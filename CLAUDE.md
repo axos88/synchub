@@ -342,6 +342,21 @@ introduction accurate as the hub logic evolves.
   list ends with `#include .stignore-git-local`, so `.stignore` needs one line; Syncthing fails
   on a missing included file ("file not found", `lib/ignore/ignore.go`), so the local list is
   always written, even empty, before `.stignore` includes the synced one.
+  Besides the git lists, every folder has `.stignore-shared` (`commands/sync/ignores.rs`): a
+  hand-written list, synced, the same on every device, included from `.stignore` after the
+  device's own lines and before `#include .stignore-git` (hand-written patterns win over
+  generated ones). `sync` sets it up for every folder (so on connecting, and on every app
+  reload), `new` for the folder it creates. The list is created only where no device has one
+  (`Client::find_file`, `/rest/db/file`: 404 or a deleted global copy): while another device's
+  is on its way, an empty one made here would be the newer edit and win, losing the patterns -
+  so the folder waits, and gets the include once the list has arrived (verified on the sandbox,
+  holding the list back on one leaf). Not created in receive-only folders (it wouldn't spread),
+  receive-encrypted ones are skipped. The include is added only once the list exists, since
+  Syncthing rejects a `.stignore` including a missing file. Setting a folder up (Ákos,
+  2026-10-27) moves its `.stignore`'s own lines into the list - appended, lines it has already
+  skipped, blank ones dropped - leaving `.stignore` its `#include` lines only (`arrange`); once
+  only, when the include is missing, so lines added later stay the device's own; never in a
+  receive-only folder.
   `PATH` is a scope, like `git status PATH`: the repositories at or around it (overlapping a
   folder) are read again and replace their sections in every folder at, around or inside it.
   Verified on the sandbox: for every file of the fixture (tracked file matching a pattern,

@@ -259,14 +259,14 @@ Everything the app does is also a command, for scripts:
 |---|---|
 | `synchub list` | The hub's shares, which are here, and which devices also have them. |
 | `synchub convert` | Moves folders shared directly with devices that have joined the hub over to the hub (see "Converting an existing network" above). Every command that uses the hub also does this when it first connects. |
-| `synchub new PATH [--label L] [--device D]...` | Shares a directory of this device - unlabelled unless `--label` is given, as the web UI does: here with the hub only, on the hub (in its folder defaults' directory, under the folder ID) with this device and the devices given. |
+| `synchub new PATH [--label L] [--device D]...` | Shares a directory of this device - unlabelled unless `--label` is given, as the web UI does: here with the hub only, on the hub (in its folder defaults' directory, under the folder ID) with this device and the devices given - and sets up its shared ignore list (below). |
 | `synchub get FOLDER [--path P]` | Gets one of the hub's shares here: the hub shares it with this device, which accepts it into its folder defaults' directory (under the label, or the folder ID if that directory exists already); with `--path`, it's then moved there, as `synchub mv` moves it. |
 | `synchub remove FOLDER [--delete-files]` | Removes a folder from the hub and from this device; the other devices keep their copy. With `--delete-files`, it first empties the folder everywhere - deletes the files here and waits until every connected device sharing it has deleted them too - then deletes its directory here. |
 | `synchub share FOLDER DEVICE` | Has the hub share a folder with a device too - this one included, which then accepts it. A folder only this device has is created on the hub first. |
 | `synchub unshare FOLDER DEVICE` | Has the hub stop sharing a folder with a device; it keeps its copy until it removes it. |
 | `synchub rename-folder FOLDER LABEL` | Gives a folder a new label on the hub, then syncs (below). Directories keep their names. |
 | `synchub rename-device DEVICE NAME` | Renames a device on the hub, then syncs (below). |
-| `synchub sync` | Takes the hub's folder labels and device names on this device - for the folders and devices both have, this one included - and gives the hub this device's where the hub's is empty. Every Syncthing keeps its own label for each folder and name for each device; this makes them the same. It runs whenever synchub connects to the hub, and on every reload of the app; this runs it on its own. |
+| `synchub sync` | Takes the hub's folder labels and device names on this device - for the folders and devices both have, this one included - and gives the hub this device's where the hub's is empty. Every Syncthing keeps its own label for each folder and name for each device; this makes them the same. It also has every folder here include its shared ignore list (below). It runs whenever synchub connects to the hub, and on every reload of the app; this runs it on its own. |
 
 FOLDER is a folder's ID or label on the hub, or the directory of a folder this
 device has (meaning the hub's folder with the same ID); `mv`, `overwrite` and
@@ -280,6 +280,30 @@ app is `synchub` on its own. Each change is reported as it's made
 (e.g. `local: pausing Notes`, `hub: sharing Notes with laptop`), on stderr.
 `-n` / `--dry-run`, with any command, changes nothing: it prints what would be
 done instead (`local: would pause Notes`).
+
+### Ignore patterns shared by every device
+
+Syncthing doesn't sync a folder's `.stignore`: each device has its own. So
+every folder also gets `.stignore-shared`, an ordinary file that does sync -
+put the patterns every device should ignore there, and they're the same
+everywhere. Each device's `.stignore` includes it:
+
+```
+<folder>/.stignore          this device's own lines, then: #include .stignore-shared
+<folder>/.stignore-shared   synced: the patterns for every device
+```
+
+synchub sets this up whenever it runs `sync` - on connecting to the hub, and on
+every reload of the app - and in `new`. Where no device has the list yet, it
+creates it; where another device's is still on its way, it waits for it rather
+than make an empty one that would replace it, and includes it once it has
+arrived. The patterns a folder's `.stignore` had then move into the list -
+after what it has, skipping lines it has already - leaving `.stignore` its
+`#include` lines only. That happens once, when the folder is set up: a pattern
+you add to `.stignore` later stays this device's own - put it above the
+`#include` lines, since the first matching pattern wins. In a receive-only
+folder nothing moves (its changes don't spread), and the list is only included
+once another device has made it.
 
 ## Helpers
 
@@ -309,7 +333,8 @@ repositories and submodules), in every Syncthing folder at, around or inside
 `PATH`; other repositories' patterns stay as they are. Each folder has two lists:
 
 ```
-<folder>/.stignore             your lines, then: #include .stignore-git
+<folder>/.stignore             your lines, #include .stignore-shared (above), then:
+                               #include .stignore-git
 <folder>/.stignore-git         synced: the .gitignore files' patterns, and `!` lines for the
                                tracked files they match (git never ignores those); last:
                                #include .stignore-git-local
@@ -327,7 +352,8 @@ repositories and submodules), in every Syncthing folder at, around or inside
 - `.stignore` doesn't sync, so run `gitignore` once on each device; the synced
   list's updates sync in from then on. Your own `.stignore` lines come first,
   so they win: an `!` line such as `!/config/master.key` keeps a git-ignored
-  secret syncing.
+  secret syncing. The shared list comes next, so its hand-written patterns win
+  over the generated ones.
 - Run it again when a `.gitignore` changes, or when a file a pattern matches
   gets tracked. A background service that does it is planned. An outer
   repository's patterns that match at any depth also reach into a repository

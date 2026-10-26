@@ -1,8 +1,13 @@
-//! Path helpers shared by the commands.
+//! Path and file helpers shared by the commands.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+
+use crate::settings;
+use crate::{say, step};
 
 pub fn home() -> PathBuf {
     std::env::var_os("HOME")
@@ -84,6 +89,25 @@ pub fn relative_to_home(path: &Path) -> String {
     } else {
         format!("~/{rel}")
     }
+}
+
+/// The text of `file`; None if there's no such file.
+pub fn read_if_exists(file: &Path) -> Result<Option<String>> {
+    match fs::read_to_string(file) {
+        Ok(text) => Ok(Some(text)),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("can't read {}", file.display())),
+    }
+}
+
+/// Writes `content` to `file`, saying so - in a dry run only that it would.
+pub fn write(file: &Path, content: &str) -> Result<()> {
+    if settings::dry_run() {
+        say!(Local, "would write {}", file.display());
+        return Ok(());
+    }
+    step!(Local, "writing {}", file.display());
+    fs::write(file, content).with_context(|| format!("can't write {}", file.display()))
 }
 
 #[cfg(test)]

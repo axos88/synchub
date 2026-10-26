@@ -43,3 +43,17 @@ pub struct Completion {
     #[serde(default)]
     pub need_bytes: u64,
 }
+
+/// What `/rest/db/file` returns about a file of a folder.
+#[derive(Deserialize)]
+pub struct FileResponse {
+    /// The newest version any device has.
+    pub global: File,
+}
+
+/// A file as the folder's index has it.
+#[derive(Deserialize)]
+pub struct File {
+    /// It was deleted: what's left in the index is the deletion.
+    pub deleted: bool,
+}

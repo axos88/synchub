@@ -614,6 +614,16 @@ impl<S: Side> Client<S> {
         Ok(())
     }
 
+    /// The file `name` of the folder `id`, as the folder's index has it; None
+    /// if no device has ever had it (Syncthing answers 404).
+    pub fn find_file(&self, id: &FolderId, name: &str) -> Result<Option<api::db::FileResponse>> {
+        self.find(&format!(
+            "db/file?folder={}&file={}",
+            encode(id.as_str()),
+            encode(name)
+        ))
+    }
+
     /// The error Syncthing found in the folder's ignore patterns, if any.
     pub fn ignores_error(&self, id: &FolderId) -> Result<Option<String>> {
         let ignores: api::db::IgnoresResponse =

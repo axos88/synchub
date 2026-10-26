@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use crate::api;
 use crate::client;
-use crate::commands::{Arguments, option};
+use crate::commands::{Arguments, option, sync};
 use crate::device_id::DeviceId;
 use crate::folder_id::FolderId;
 use crate::paths;
@@ -79,7 +79,18 @@ pub fn create(path: &Path, label: Option<&str>, devices: &[DeviceId]) -> Result<
     // Here first: once the hub shares it with this device, the hub's offer
     // would otherwise be auto-accepted into the folder defaults' directory.
     local.add_folder(&id, label, &config_path, &[&my_id, hub.id()])?;
-    hub.add_folder(&id, label, &hub_path, &hub_devices)
+    hub.add_folder(&id, label, &hub_path, &hub_devices)?;
+    include_shared_ignores(&id)
+}
+
+/// Has the new folder `id` include its shared ignore list.
+fn include_shared_ignores(id: &FolderId) -> Result<()> {
+    // A dry run added nothing.
+    let Some(folder) = client::local()?.find_folder(id)? else {
+        return Ok(());
+    };
+    sync::include_shared_ignores(&folder)?;
+    Ok(())
 }
 
 /// `path`, in full; fails unless it's a directory.
