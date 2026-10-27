@@ -28,16 +28,15 @@ const NEW_LIST: &str = "\
 !.stignore-shared
 ";
 
-/// Has every folder of this device include its shared list; whether anything
-/// changed. Each folder on its own: one failing mustn't leave the rest behind.
-pub fn include_everywhere() -> Result<bool> {
+/// Has every folder of this device include its shared list. Each folder on
+/// its own: one failing mustn't leave the rest behind.
+pub fn include_everywhere() -> Result<()> {
     let folders = client::local()?.config()?.folders;
-    let results: Vec<(String, Result<bool>)> = folders
+    let results: Vec<(String, Result<()>)> = folders
         .iter()
         .filter(|folder| !folder.is_receive_encrypted())
         .map(|folder| (folder.name(), include(folder)))
         .collect();
-    let changed = results.iter().any(|(_, result)| matches!(result, Ok(true)));
     let failed: Vec<(String, anyhow::Error)> = results
         .into_iter()
         .filter_map(|(name, result)| result.err().map(|err| (name, err)))
@@ -45,19 +44,19 @@ pub fn include_everywhere() -> Result<bool> {
     if !failed.is_empty() {
         bail!("these don't include {FILE_NAME} yet: {}", warn_all(&failed));
     }
-    Ok(changed)
+    Ok(())
 }
 
 /// Has `folder`'s `.stignore` include its shared list, creating the list if
-/// no device has one yet, and moving the folder's own patterns into it; whether
-/// anything changed. While another device's list is still on its way, it waits
-/// for it: an empty one made here would be the newer edit, and win over it.
-pub fn include(folder: &api::config::Folder<Local>) -> Result<bool> {
+/// no device has one yet, and moving the folder's own patterns into it. While
+/// another device's list is still on its way, it waits for it: an empty one
+/// made here would be the newer edit, and win over it.
+pub fn include(folder: &api::config::Folder<Local>) -> Result<()> {
     let root = folder.local_path();
     let stignore_file = root.join(".stignore");
     let stignore = paths::read_if_exists(&stignore_file)?.unwrap_or_default();
     if has_include(&stignore) {
-        return Ok(false);
+        return Ok(());
     }
     let list_file = root.join(FILE_NAME);
     let current_list = paths::read_if_exists(&list_file)?;
@@ -69,9 +68,9 @@ pub fn include(folder: &api::config::Folder<Local>) -> Result<bool> {
                 "{}: another device's {FILE_NAME} is on its way; it's included once it's here",
                 folder.name()
             );
-            return Ok(false);
+            return Ok(());
         }
-        None if !spreads(folder) => return Ok(false),
+        None if !spreads(folder) => return Ok(()),
         None => NEW_LIST.to_string(),
     };
     let (new_stignore, new_list) = arrange(&stignore, &list, spreads(folder));
@@ -81,7 +80,7 @@ pub fn include(folder: &api::config::Folder<Local>) -> Result<bool> {
     }
     paths::write(&stignore_file, &new_stignore)?;
     load(folder, &root)?;
-    Ok(true)
+    Ok(())
 }
 
 fn has_include(stignore: &str) -> bool {

@@ -1,6 +1,6 @@
 # Backlog
 
-Next free ID: D-17
+Next free ID: D-18
 
 By effort, smallest first; blocked items last.
 
@@ -10,6 +10,7 @@ By effort, smallest first; blocked items last.
 - D-11 · ~1 day · The app kept current by Syncthing's events: one event channel, a cached config
 - D-3 · ~1½ days · Background service: drops shares the hub stopped offering; later does gitignore too
 - D-13 · ~1½-2 days · A component tree: one trait for every part, retained UI state, pure layout (with D-15)
+- D-17 · ~2-3 weeks · A cluster that doesn't trust its hub: encrypted hub, grant tree, signed logs - a new project
 - D-7 · blocked · ~15 min · Join the real machines to the real hub - manual: Ákos runs `synchub join`
 - D-12 · blocked · ~30 min · Drop `new_folder_path` once Syncthing resolves relative paths - syncthing#10937
 
@@ -329,3 +330,93 @@ What it takes:
 
 Next step: decide the hover look (e.g. underlined, or reversed), then do it - after D-15/D-13,
 or on today's recorded areas if it's wanted sooner.
+
+### D-17 · A cluster that doesn't trust its hub (a redesign - likely a new project)
+
+Discussed by Ákos and Claude (2026-10-27). Ákos: "we may want to revisit this, but it seems like
+a completely new project" - and "not very much can be reused". Nothing decided to build; this
+records the design as far as it went. Ákos's ideas and Claude's suggestions are marked.
+
+**Why.** Today trust within the cluster is assumed (README, "Trust"): every leaf holds the hub's
+API key - full control of the hub - and the hub keeps a plain copy of every folder. A device
+can share any folder with itself, and a compromised device is a compromised hub.
+
+**The design, in parts:**
+
+1. **A service on the hub** (Ákos) - the only thing talking to the hub's Syncthing; leaves no
+   longer hold its API key, they send requests. Channel (Claude's analysis): files inside the
+   shares - no (they reach every member, the author isn't verifiable, and a new share can't be
+   read before it's accepted); a control folder per leaf - authenticated by Syncthing's device
+   certificates, works offline, but asynchronous; an API on the hub authenticated by the leaves'
+   device certificates as TLS client certificates (the certificate's hash is the device ID) and
+   serving the hub's own device certificate - so both sides are authenticated, which also closes
+   today's "the hub isn't authenticated" gap. Claude recommended the API.
+2. **An encrypted hub** (Ákos): Syncthing's untrusted-device encryption - the hub's copy of each
+   folder is receive-encrypted (contents and names), so the hub relays and stores but can't read.
+   What Syncthing doesn't do is distribute each folder's password: a folder's key is wrapped with
+   each member's public key (Ákos), so the folder's owner decides who can read it. Claude's
+   suggestions: a separate encryption key pair per device, its public half signed with the device
+   key (rather than encrypting with the certificate's signing key), and an established format
+   (`age`: X25519 and ChaCha20-Poly1305, anonymous recipients) rather than raw AES.
+3. **Grants as a tree** (Ákos): A grants B and C, B grants D and E, D grants F and G. A can only
+   remove its own grants (B, C); removing B removes B's whole subtree. A grant is a signed record
+   carrying the folder key wrapped for the grantee; it's valid only if its granter's grant is, up
+   to the folder's creator - anyone can check a chain, so the hub only stores and relays them.
+   Claude's suggestions, open: one grant per device per folder (a second one refused - so
+   removing a branch removes it without exceptions); a "may grant further" flag; no grant to an
+   ancestor. Consequence: A can't remove D without removing B's branch (or asking B).
+   Revocation rotates the folder **data's** password - which, as far as known, means removing and
+   re-adding the folder on the hub, re-uploading it all (to verify) - and protects only what comes
+   after: a removed device keeps what it already has.
+4. **Leaves choose their own peers** (Claude): with an untrusted hub, the hub can't be the leaves'
+   introducer - they sync with introduced devices directly, in plain text, so a hostile hub could
+   introduce a device of its own and read everything. Each leaf verifies the grant tree and
+   shares a folder directly only with devices whose chain checks out; no introducer, no
+   auto-accepting from the hub. That needs something running on every leaf - D-3's service
+   becomes required.
+5. **The metadata** - device records (encryption public key signed with the device key, and the
+   device certificate, checkable against the device ID), folder records, grants, revocations,
+   wrapped keys - travels through Syncthing itself:
+   - **Encrypted per record to its audience** (Ákos): a random key per record, the content
+     encrypted once with it, the key wrapped for each recipient (envelope encryption - `age`'s
+     multi-recipient format). Audience: the folder's members for its grants and revocations
+     (every member checks every peer's chain), the whole cluster for device keys and admission.
+     A removed device is simply no longer a recipient - no rotation needed for metadata. A new
+     member needs the folder's history: the granter re-wraps the past records' keys for it, in
+     the grant. Records are also signed by their author (encryption doesn't say who wrote one).
+   - **Where**: not in the data folders (a new member needs its key before it can decrypt the
+     folder holding it). One shared metadata folder, or one outbox per device - send-only on its
+     owner, receive-only elsewhere (Claude leaned to outboxes: Syncthing then ensures only the
+     author writes or deletes; one shared folder needs self-healing - each device archives what
+     it saw and puts back what disappears). Immutable records, one file each, named by their
+     hash: Syncthing never sees a conflict.
+   - **A hash chain per author** (Ákos): each record carries the hash of its author's previous
+     one, so a record can't go missing in the middle unnoticed - only the newest can be held back.
+   - **Acknowledgements and pruning** (Ákos): each device publishes "I've handled A's records up
+     to X"; once every stakeholder has, A may delete its records up to there. Claude's
+     refinements: counters rather than timestamps (clocks disagree); acknowledgements carry the
+     record's hash, so they also expose a held-back tail; a checkpoint (a signed summary of what's
+     still in force - live grants, current keys - and where the chain stands) before pruning, so
+     devices joining later still find live grants; removing a device from the cluster removes it
+     as a stakeholder (a lost laptop would block pruning forever); two records claiming the same
+     predecessor prove a misused key - warn loudly. Prior art: Secure Scuttlebutt's per-feed
+     signed, hash-chained logs.
+   - What remains against a hostile hub: a device that only ever talks to the hub can be kept
+     stale; devices that also meet each other directly close that.
+
+**What it would change.** The trust model goes from "every device trusts every other, and the
+hub" to "a device sees a folder only if a chain of grants from its creator says so". The hub
+still sees metadata (sizes, timing, which device syncs which folder). Admission of a new device
+needs a step of its own (an existing device admits it, or it's done on the hub).
+
+**Open questions:** one shared metadata folder or per-device outboxes; the grant rules above;
+who may admit devices; the hub service's API; migration from today's clusters.
+
+**To verify first, on the sandbox:** whether an untrusted device's folder password can be changed
+without re-adding the folder; the key type of Syncthing's device certificates (v2.1.7); whether
+receive-only devices pass on what they receive (for the hub relaying outboxes).
+
+**Size:** roughly 2-3 weeks - the hub service, keys and grants, the encrypted hub, the leaf-side
+service managing peers, the metadata logs, migration. Ákos: little of synchub carries over.
+
+Next step: Ákos to decide whether to pursue it - as a new project or as synchub's next version.

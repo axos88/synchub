@@ -384,6 +384,13 @@ introduction accurate as the hub logic evolves.
   unique, so no two folders meet; a label can repeat or change), absolute or `~/...`: a relative path isn't taken relative
   to the defaults' directory but to the Syncthing process's working directory, every time the
   folder is opened (`lib/fs/basicfs.go` `newBasicFilesystem`: `ExpandTilde`, then `filepath.Abs`).
+- A scan asked for while a folder restarts (`POST /rest/db/scan`) is refused with `500 context
+  canceled` (verified in the sandbox, v2.1.7, 2026-10-27); Syncthing restarts a folder whenever
+  its configuration changes - e.g. right after a new share, when the hub introduces the other
+  devices to it. `Client::scan` asks again, up to three times a second apart (`is_cancelled`).
+  A restart mid-scan doesn't fail the request: the scan just stops. So `new` sets up the shared
+  ignore list before the hub shares the folder - the other devices then get the list with it,
+  rather than making their own.
 - Auto-accepting (verified in the sandbox, v2.1.7, 2026-10-24): when the hub shares a folder
   with a leaf, the leaf adds it within about a second, at its folder defaults' directory under
   the folder's label - or, if that directory exists already (it had a file in it), under the

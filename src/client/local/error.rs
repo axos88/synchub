@@ -22,6 +22,15 @@ pub struct NotFound {
     pub(super) what: String,
 }
 
+/// Whether `err` is Syncthing answering that the folder restarted while the
+/// request waited for it (verified, v2.1.7: a scan asked for during a
+/// restart gets `500 context canceled`).
+pub(super) fn is_cancelled(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<Refused>().is_some_and(|refused| {
+        refused.status == StatusCode::INTERNAL_SERVER_ERROR && refused.body == "context canceled"
+    })
+}
+
 /// Whether `err` is Syncthing answering 404.
 pub(super) fn is_404(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Refused>()
@@ -48,6 +57,17 @@ mod tests {
             what: "folder abcde-12345".to_string(),
         };
         assert_eq!(not_found.to_string(), "the hub has no folder abcde-12345");
+        let cancelled = Refused {
+            who: "the hub",
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            body: "context canceled".to_string(),
+        };
+        assert!(is_cancelled(&anyhow::Error::new(cancelled)));
+        assert!(!is_cancelled(&anyhow::Error::new(Refused {
+            status: StatusCode::CONFLICT,
+            body: "folder exists".to_string(),
+            who: "the hub",
+        })));
         assert!(is_404(&anyhow::Error::new(Refused {
             status: StatusCode::NOT_FOUND,
             ..refused

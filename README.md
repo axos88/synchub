@@ -1,17 +1,17 @@
 # synchub
 
-synchub manages a personal [Syncthing](https://syncthing.net/) network - your
-laptops, desktops and servers - built around one always-on **hub**. It joins a
-device to the hub, converts an existing network to the hub one device at a
-time, and shows everything in an app where each device chooses its shares -
-and who else sees them - a key at a time. It also carries a few helpers for
-everyday Syncthing chores: moving a synced directory, replacing a share's
-contents everywhere, and keeping what git ignores out of the sync.
+**An opinionated [Syncthing](https://syncthing.net/) cluster, and the tool
+that runs it.** synchub sets up and runs your personal Syncthing network -
+laptops, desktops, servers - one particular way: around one always-on **hub**
+that has every folder and decides which device sees which. You don't configure
+Syncthing device by device any more; you tell synchub what to share with whom,
+and it keeps every device set up the cluster's way.
 
-It drives the local Syncthing (and the hub) over their REST API; it doesn't
-replace Syncthing, and every setting it changes is visible in the web UI.
+It drives each Syncthing over its REST API. It doesn't replace or patch
+Syncthing, and every setting it changes is an ordinary one, visible in the web
+UI.
 
-## The hub and the leaves
+## The cluster
 
 ```
                  ┌──────────────────────┐
@@ -25,24 +25,32 @@ replace Syncthing, and every setting it changes is visible in the web UI.
              leaves that share a folder also sync with each other directly
 ```
 
-- Every folder is shared with the **hub**, and on the hub you tick the devices
-  that see it. The hub keeps a copy of every folder.
-- The other devices are **leaves**. A leaf accepts folders from the hub
-  automatically, and uses the hub as its *introducer*: for each folder, the
-  hub tells it which other leaves share it, and the leaves then also sync
-  with each other directly - over the LAN, when they're on the same one.
-- Only the hub decides. The hub doesn't auto-accept and has no introducers; the
-  leaves accept nothing from anyone but the hub. Removing a device from a
-  folder happens on the hub first - otherwise the hub offers the folder
-  again, and the leaf accepts it again.
-- Names are the same everywhere: Syncthing lets every device label each
-  folder and name each device its own way. synchub keeps them the same: the
-  hub's labels and names are the reference. Renaming (`synchub rename-folder`,
-  `rename-device`, or `r` in the app) renames on the hub; every time synchub
-  connects to the hub - any command that uses it, and every reload of the app -
-  it takes the hub's names on that device, and gives the hub that device's
-  where the hub has none. A device takes a rename the next time synchub runs
-  there; a rename made in a device's own web UI is replaced by the hub's.
+These are the opinions - the rules every device of the cluster follows, and
+synchub keeps it to:
+
+- **The hub decides.** Every folder is shared with the hub, and on the hub you
+  tick the devices that see it. The hub keeps a copy of every folder. It
+  doesn't auto-accept folders and has no introducers.
+- **The other devices are leaves.** A leaf accepts folders from the hub only,
+  automatically, and the hub is its only introducer: for each folder, the hub
+  tells it which other leaves share it, and those leaves then also sync with
+  each other directly - over the LAN, when they're on the same one.
+- **Sharing changes on the hub, first.** Sharing a folder with a device, or no
+  longer, is done on the hub; the leaves follow. Removing a device from a
+  folder only on the leaf wouldn't hold: the hub would offer the folder again,
+  and the leaf would accept it again.
+- **Nothing is shared by default.** A new folder is shared with no device
+  until you choose; on the hub it lives in its folder defaults' directory,
+  under the folder's ID.
+- **Names are the hub's.** Syncthing lets every device label each folder and
+  name each device its own way; in the cluster they're the same everywhere,
+  and the hub's are the reference. A rename is made on the hub, and every
+  device takes it the next time synchub runs there (a rename made in one
+  device's own web UI is replaced by the hub's).
+- **Ignore patterns are shared.** Each folder has a synced
+  `.stignore-shared`, the same on every device, which every device's own
+  `.stignore` includes - so what one device ignores, every device ignores
+  (see "Ignore patterns shared by every device" below).
 
 ### Fewer conflicts
 
@@ -71,7 +79,55 @@ same time - possibly days later. The hub stores it and passes it on, so it
 travels between devices that are never on at the same time. Devices that *are*
 on together still sync directly, so the hub adds availability, not a detour.
 
-The hub has a plain copy of every folder: it has to be a machine you trust.
+### Trust
+
+The cluster is built on trust between its devices, and assumes it:
+
+- **Every device can change everything.** A device joins with the hub's API
+  key, and keeps it: it's what lets synchub share, rename and remove from any
+  device. But that key is full control of the hub - any device can share any
+  folder with itself, unshare it from others, rename or remove it, or change
+  any other setting of the hub. A device you wouldn't trust with all of that
+  doesn't belong in the cluster, and a compromised device is a compromised hub.
+- **The hub has a plain copy of every folder** - not encrypted: it has to be a
+  machine you trust with everything.
+- **The hub isn't authenticated.** `join` checks that the address leads to the
+  hub by its device ID, but doesn't verify who receives the API key (see
+  "Setting up a device" below).
+
+The API key is kept in synchub's settings file, readable by your user only.
+
+### When it's not for you
+
+The cluster is one way of running Syncthing, not the only one. It's not for
+you if:
+
+- the devices don't all trust each other - e.g. a device of someone else's,
+  or one you'd rather keep from seeing or changing the others' folders;
+- there's no machine you'd trust with a plain copy of everything;
+- you'd rather keep a mesh where each device decides for itself what it
+  shares: in the cluster, names you change in a device's own web UI are
+  replaced by the hub's, and folders shared directly between devices that have
+  joined are moved over to the hub.
+
+## What synchub does
+
+- **Joins a device to the hub** (`synchub join`, or the form `synchub` shows
+  on a device without one) and sets it up as a leaf.
+- **Converts an existing network**, one device at a time: as a device joins,
+  the folders it shared directly with devices that have joined are moved over
+  to the hub; the rest keep syncing as they did.
+- **The app** (`synchub`): this device, the hub, and every folder with the
+  devices that see it - share, unshare, get, move, rename and remove a key or
+  a click away.
+- **Commands** for everything the app does, for scripts.
+- **Helpers** for everyday Syncthing chores: moving a synced directory,
+  replacing a share's contents everywhere, keeping what git ignores out of the
+  sync.
+
+It's early: there are no numbered releases yet, and it's been tested against
+Syncthing v2.1.7 on a sandbox cluster of a hub and three leaves. What's
+planned is under "Plans" below.
 
 ## Install
 
@@ -109,8 +165,10 @@ Linux, `~/Library/Application Support/Syncthing` on macOS,
 GUI on a Unix socket works too: in `config.xml` its address is the socket's
 path; with `--gui-address` it's `unix:///path`, or `unixs:///path` with TLS.
 
-synchub's own settings - the hub's address, API key, device ID and sync address - are in `~/.config/synchub/config.toml`
-(`~/Library/Application Support/synchub` on macOS), readable by you only;
+synchub's own settings - the hub's address, API key and device ID - are in
+`~/.config/synchub/config.toml` (`$XDG_CONFIG_HOME/synchub/config.toml` if
+that's set; `~/Library/Application Support/synchub/config.toml` on macOS;
+`%USERPROFILE%\.config\synchub\config.toml` on Windows), readable by you only;
 `--config` or `SYNCHUB_CONFIG` points elsewhere.
 
 ## Setting up a device
@@ -358,6 +416,38 @@ repositories and submodules), in every Syncthing folder at, around or inside
   gets tracked. A background service that does it is planned. An outer
   repository's patterns that match at any depth also reach into a repository
   nested in it, which git wouldn't do.
+
+## Plans
+
+What's next, roughly in order. The details - and what's been decided - are
+in [BACKLOG.md](BACKLOG.md).
+
+- **A background service on each device.** Today a device follows the hub only
+  when synchub runs there. A small service, installed when a device joins,
+  would do it continuously: remove the shares the hub stopped offering this
+  device (now they stay until removed by hand), and keep the git ignore lists
+  up to date as `.gitignore` files change.
+- **An app that keeps itself current.** It would follow Syncthing's events -
+  a folder syncing, a device connecting, a rename on the hub - instead of
+  showing what it last loaded until you refresh (Ctrl-R).
+- **Smaller things in the app:** buttons and the status bar's keys highlighted
+  as the mouse moves over them, and the status bar's keys clickable.
+- **Pruning a file from the hub** after it has been added to the ignore
+  patterns, as Syncthing never deletes an ignored file anywhere - still being
+  worked out.
+- **Numbered releases**, once the above has settled.
+
+Further out - possibly as a project of its own, as little of synchub would
+carry over - **a cluster that doesn't have to trust its hub, or every
+device**. The hub would keep every folder encrypted (Syncthing's untrusted
+devices), and the devices would no longer hold the hub's API key: a service on
+the hub would carry out their requests, authenticated by their Syncthing
+device certificates. Who may read a folder would be up to its creator, through
+a tree of grants - A grants B, B grants D - where taking back B's grant takes
+back everything B passed on, and each folder's key reaches only the devices
+granted it. The grants and keys would travel as signed, encrypted records
+through Syncthing itself. Today's trust model (see "Trust" above) is the one
+synchub has until then.
 
 ## License
 

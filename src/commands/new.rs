@@ -79,8 +79,11 @@ pub fn create(path: &Path, label: Option<&str>, devices: &[DeviceId]) -> Result<
     // Here first: once the hub shares it with this device, the hub's offer
     // would otherwise be auto-accepted into the folder defaults' directory.
     local.add_folder(&id, label, &config_path, &[&my_id, hub.id()])?;
-    hub.add_folder(&id, label, &hub_path, &hub_devices)?;
-    include_shared_ignores(&id)
+    // Before the hub shares it: the other devices then get the list with the
+    // folder, rather than making their own; and the hub introducing them
+    // restarts the folder here, which would cancel the rescan.
+    include_shared_ignores(&id)?;
+    hub.add_folder(&id, label, &hub_path, &hub_devices)
 }
 
 /// Has the new folder `id` include its shared ignore list.

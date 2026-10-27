@@ -44,12 +44,12 @@ impl Arguments for Args {
 }
 
 pub fn run(_args: Args) -> Result<()> {
-    if !sync(client::hub()?)? {
-        say!(
-            Local,
-            "the labels, names and shared ignore lists are in step already"
-        );
-    }
+    // Connecting has run it once already: this pass finds what's left.
+    sync(client::hub()?)?;
+    say!(
+        Local,
+        "the labels, names and shared ignore lists are in step"
+    );
     Ok(())
 }
 
@@ -64,23 +64,23 @@ pub fn on_connect(hub: &HubClient) {
 
 /// Gives this device's folders and devices the hub's labels and names, and
 /// the hub this device's where it has none; and has every folder here include
-/// its shared ignore list. Whether anything changed.
-pub fn sync(hub: &HubClient) -> Result<bool> {
+/// its shared ignore list.
+pub fn sync(hub: &HubClient) -> Result<()> {
     let renamed = names(hub);
     let included = ignores::include_everywhere();
     // Both run first: one failing mustn't leave the other undone.
-    Ok(renamed? | included?)
+    renamed.and(included)
 }
 
-/// The labels and names; whether any changed.
-fn names(hub: &HubClient) -> Result<bool> {
+/// The labels and names.
+fn names(hub: &HubClient) -> Result<()> {
     let local = client::local()?;
     step!(Hub, "reading its folder labels and device names");
     let (local_config, hub_config) = (local.config()?, hub.config()?);
     let folders = folder_renames(&local_config, &hub_config);
     let devices = device_renames(&local_config, &hub_config);
     if folders.is_empty() && devices.is_empty() {
-        return Ok(false);
+        return Ok(());
     }
 
     let failed_folders = folders.iter().map(|rename| match rename {
@@ -106,7 +106,7 @@ fn names(hub: &HubClient) -> Result<bool> {
     if !failed.is_empty() {
         bail!("these weren't renamed: {}", warn_all(&failed));
     }
-    Ok(true)
+    Ok(())
 }
 
 /// A label or name to set: the hub's here, or - the hub having none - this

@@ -24,8 +24,8 @@ use crate::{say, step};
 
 mod error;
 
-use error::is_404;
 pub use error::{NotFound, Refused};
+use error::{is_404, is_cancelled};
 
 static CONNECTION: OnceLock<Connection> = OnceLock::new();
 static LOCAL: OnceCell<Client<Local>> = OnceCell::new();
@@ -591,11 +591,22 @@ impl<S: Side> Client<S> {
         if self.skip(format!("rescanning {name}"), format!("rescan {name}")) {
             return Ok(());
         }
-        self.send(self.request(
-            Method::POST,
-            &format!("db/scan?folder={}", encode(folder.id.as_str())),
-        ))?;
-        Ok(())
+        let path = format!("db/scan?folder={}", encode(folder.id.as_str()));
+        self.scan_retrying(&path, &name, 3)
+    }
+
+    /// A scan asked for while the folder restarts - Syncthing restarts one
+    /// whenever its configuration changes, e.g. an introducer adding a device
+    /// to it - is refused; it's asked for again once the restart is over.
+    fn scan_retrying(&self, path: &str, name: &str, tries: u32) -> Result<()> {
+        match self.send(self.request(Method::POST, path)) {
+            Err(err) if is_cancelled(&err) && tries > 1 => {
+                step!(S::PLACE, "{name} is restarting; rescanning it again");
+                sleep(Duration::from_secs(1));
+                self.scan_retrying(path, name, tries - 1)
+            }
+            result => result.map(drop),
+        }
     }
 
     /// "Override Changes" of a send-only folder: this device's files win everywhere.
