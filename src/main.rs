@@ -13,6 +13,8 @@ mod prompt;
 mod settings;
 mod side;
 mod syncthing;
+mod update;
+mod version;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -24,7 +26,7 @@ use clap::Parser;
 /// Syncthing must be running for this user. Its GUI address and API key are
 /// read from its config.xml; use the options below where that doesn't work.
 #[derive(Parser)]
-#[command(version)]
+#[command(version = version::VERSION)]
 struct Cli {
     #[command(flatten)]
     connection: syncthing::Connection,
@@ -34,6 +36,14 @@ struct Cli {
     /// Show what would be done, change nothing
     #[arg(short = 'n', long, global = true)]
     dry_run: bool,
+    /// Don't update synchub to the latest release at start
+    #[arg(
+        long,
+        env = "SYNCHUB_NO_UPDATE",
+        global = true,
+        value_parser = clap::builder::FalseyValueParser::new()
+    )]
+    no_update: bool,
     #[command(subcommand)]
     command: Option<commands::Command>,
 }
@@ -47,6 +57,9 @@ fn main() -> ExitCode {
         cli.config.unwrap_or_else(settings::default_path),
         cli.dry_run,
     );
+    if !cli.no_update {
+        update::update();
+    }
     client::local::init(cli.connection);
     let command = cli
         .command

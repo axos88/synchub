@@ -1,0 +1,4 @@
+# Which build it is (build.rs), into the containers cross builds the Linux
+# binaries in.
+[build.env]
+passthrough = ["SYNCHUB_VERSION", "SYNCHUB_COMMIT", "SYNCHUB_ASSET"]

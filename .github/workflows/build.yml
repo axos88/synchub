@@ -39,6 +39,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The tags, for the version.
+          fetch-depth: 0
+      - name: Say which build it is
+        shell: bash
+        run: |
+          echo "SYNCHUB_VERSION=$(git describe --tags --always --match 'v*')" >> "$GITHUB_ENV"
+          echo "SYNCHUB_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          suffix=""
+          if [[ "${{ matrix.target }}" == *windows* ]]; then suffix=".exe"; fi
+          echo "SYNCHUB_ASSET=synchub-${{ matrix.name }}$suffix" >> "$GITHUB_ENV"
       # Builds with cross (Docker images with the C toolchain ring needs) where
       # the target isn't native to the runner, with cargo otherwise.
       - uses: houseabsolute/actions-rust-cross@v1

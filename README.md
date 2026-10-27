@@ -157,6 +157,19 @@ On Windows, save it as `synchub.exe` in a directory on your `PATH`.
 
 Or build it: `cargo install --git https://github.com/axos88/synchub`.
 
+The downloaded binaries keep themselves up to date. Every time synchub starts,
+it asks GitHub which commit the `latest` release was built from; if it's not
+the one it was built from, it downloads its platform's binary, checks it
+against the SHA-256 digest GitHub publishes, puts it in its own place, and
+runs it instead - with the same command. It needs to be able to write its own
+file: where it can't, or GitHub can't be reached, it says so and carries on as
+it is. `--no-update` or `SYNCHUB_NO_UPDATE=1` turns it off; a binary you built
+yourself never updates itself.
+
+`synchub --version` says which build it is: `git describe`'s version - the
+latest tag, how many commits it's ahead, and the commit (`v0.2.0-3-gabc1234`),
+or only the commit while there's no tag yet.
+
 Syncthing must be running for the user. synchub reads its GUI address and API
 key from `config.xml` (`~/.local/state/syncthing` or `~/.config/syncthing` on
 Linux, `~/Library/Application Support/Syncthing` on macOS,
@@ -234,7 +247,8 @@ synchub        # or: synchub app, synchub ui, synchub run
 ```
 
 opens the app: this device and the hub side by side - each with the picture
-its web UI draws for it, name, device ID, address and Syncthing version, and
+its web UI draws for it, name, device ID, address and Syncthing version (and
+for this device, synchub's), and
 for the hub whether its API is reachable and whether this device is connected
 to it - and below them every folder here, with its state (in sync, syncing,
 scanning, ...) and, for each device it's shared with, whether that device is

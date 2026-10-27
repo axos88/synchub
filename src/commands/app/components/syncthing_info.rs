@@ -7,6 +7,7 @@ use ratatui::text::Span;
 
 use super::{identicon_panel, syncthing_version};
 use crate::commands::app::state::SyncthingInfo;
+use crate::version;
 
 pub fn draw(frame: &mut Frame, area: Rect, info: &SyncthingInfo) {
     let details = vec![
@@ -17,6 +18,7 @@ pub fn draw(frame: &mut Frame, area: Rect, info: &SyncthingInfo) {
             "version",
             Span::raw(syncthing_version(info.version.as_deref())),
         ),
+        ("synchub", Span::raw(version::VERSION)),
     ];
     let picture = Style::new().magenta();
     identicon_panel::draw(

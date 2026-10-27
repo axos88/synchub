@@ -408,6 +408,28 @@ introduction accurate as the hub logic evolves.
   otherwise DEST is the new path, and an empty directory there is replaced. The app's move
   dialog (`dir_browser::choose_target`) only accepts a new path or an empty directory, so the logged
   `synchub mv SRC DEST` does exactly what the dialog did.
+- Which build it is (`src/version.rs`, set by `build.rs`): `VERSION` (`git describe --tags
+  --always --dirty --match 'v*'` - not the rolling `latest` tag - e.g. `v0.2.0-3-gabc1234`, or
+  the short commit before a tag), `COMMIT`, and `ASSET` - only CI sets it (`SYNCHUB_ASSET`, the
+  release asset's name), and only builds with it update themselves; a local build asks git for
+  the rest. CI passes all three in the environment (`build.yml`'s "Say which build it is" step,
+  with the full history for the tags), and `Cross.toml` passes them into cross's containers.
+  `--version` and the app's "This device" panel show `VERSION`.
+- Self-update (`src/update.rs`, from `main` before anything else, unless `--no-update` /
+  `SYNCHUB_NO_UPDATE` - clap's `FalseyValueParser`, so `1`/`yes` work): GitHub's API for the
+  `latest` release (unauthenticated: 60 requests an hour per IP; 5 s timeout); if its
+  `target_commitish` isn't `COMMIT`, the asset named `ASSET` is downloaded and checked against
+  the asset's `digest` (`sha256:…`, refused without one), written beside the binary
+  (`synchub.new` - created before downloading, so a binary it can't replace doesn't download on
+  every start) and only then moved into place; Unix renames it over the binary and `exec`s it
+  with the same arguments; Windows (which can't overwrite a running `.exe`, but can rename it)
+  moves the binary aside to `.old` - moving it back if the new one can't take its place - runs
+  the new one and exits with its code. `SYNCHUB_UPDATED` in the new process's environment stops
+  a loop, and tells it to delete `.old`: a backup goes only once its replacement has started. Anything failing is a `warn!`, never the command's error. GitHub is reached with
+  reqwest's own TLS (rustls-platform-verifier, the system's roots) - never
+  `client::tls::config()`, which accepts any certificate, for Syncthing's self-signed GUI.
+  Verified on the sandbox with a build pretending to be an old release: dry run, both opt-outs,
+  a read-only directory, no network, and a real update (the file then matched GitHub's digest).
 - TLS uses rustls with the `ring` provider (installed as the default in `main.rs`; reqwest is
   built with `rustls-no-provider`): ring builds for every release target with just a C
   compiler.
