@@ -63,6 +63,9 @@ impl Browser<'_> {
             KeyCode::Char('q') => return Some(None),
             KeyCode::Up | KeyCode::Char('k') => self.list.select_previous(),
             KeyCode::Down | KeyCode::Char('j') => self.list.select_next(),
+            KeyCode::Enter if matches!(self.selected(), Some(Entry::Here)) => {
+                return Some(Some(self.dir.clone()));
+            }
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.open_selected(),
             KeyCode::Left | KeyCode::Backspace | KeyCode::Char('h' | '-') => self.up(),
             KeyCode::Char('~') => self.open(paths::home(), None),
@@ -74,11 +77,7 @@ impl Browser<'_> {
                 };
                 self.load(keep.as_deref());
             }
-            KeyCode::Char(' ' | 's') => match self.selected() {
-                Some(Entry::Dir(dir)) => return Some(Some(dir.clone())),
-                _ => self.message = "Highlight a directory, or press c for this one.".into(),
-            },
-            KeyCode::Char('c') => return Some(Some(self.dir.clone())),
+            KeyCode::Char(' ' | 's' | 'c') => return Some(Some(self.highlighted_dir())),
             _ => {}
         }
         None

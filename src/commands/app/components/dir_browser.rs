@@ -54,7 +54,7 @@ pub fn choose_target<'a>(
 }
 
 enum Entry {
-    /// The directory shown, when choosing a target in it is an option.
+    /// The directory shown itself.
     Here,
     Up,
     Dir(PathBuf),
@@ -115,9 +115,8 @@ impl<'a> Browser<'a> {
                 Vec::new()
             }
         };
-        let here = self.target.as_ref().map(|_| Entry::Here);
         let up = self.dir.parent().map(|_| Entry::Up);
-        self.entries = here
+        self.entries = [Entry::Here]
             .into_iter()
             .chain(up)
             .chain(dirs.into_iter().map(Entry::Dir))
@@ -171,13 +170,18 @@ impl<'a> Browser<'a> {
         self.retarget();
     }
 
-    /// Puts the highlighted directory's path into the path.
-    fn retarget(&mut self) {
-        let dir = match self.selected() {
+    /// The highlighted directory: `../` is the parent, `./` the directory shown.
+    fn highlighted_dir(&self) -> PathBuf {
+        match self.selected() {
             Some(Entry::Dir(dir)) => dir.clone(),
             Some(Entry::Up) => self.dir.parent().unwrap_or(&self.dir).to_path_buf(),
             Some(Entry::Here) | None => self.dir.clone(),
-        };
+        }
+    }
+
+    /// Puts the highlighted directory's path into the path.
+    fn retarget(&mut self) {
+        let dir = self.highlighted_dir();
         if let Some(target) = &mut self.target {
             target.set(dir_shown(&dir));
         }

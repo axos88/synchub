@@ -292,9 +292,9 @@ home directory.
 
 And anywhere: `n` shares a new directory (a form for the directory, the label
 and the devices; it starts in its directory browser - `j`/`k` move, Enter
-opens, `-` goes up, Space chooses the highlighted directory, `c` the current
-one, `~` or Ctrl-H home - and Space or a click on the directory field opens it
-again), Ctrl-R refreshes, `q` quits - also while the app loads or refreshes,
+opens, `-` goes up, Space or `c` chooses the highlighted directory (`./` is the
+one shown, which Enter chooses too), `~` or Ctrl-H home - and Space or a click
+on the directory field opens it again), Ctrl-R refreshes, `q` quits - also while the app loads or refreshes,
 without waiting for a slow hub. `j`/`k` or the arrow
 keys move; the mouse selects, double-click is Enter, the wheel scrolls.
 
