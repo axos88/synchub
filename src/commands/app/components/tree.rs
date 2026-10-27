@@ -10,7 +10,7 @@ use ratatui::widgets::{Block, List, ListItem};
 
 use super::clickable_list::ClickableList;
 use crate::commands::app::gesture::Gesture;
-use crate::commands::app::state::{DeviceProgress, FolderState, State};
+use crate::commands::app::state::{DeviceProgress, FolderState, GlobalState, State};
 use crate::device_id::DeviceId;
 use crate::folder_id::FolderId;
 
@@ -242,13 +242,18 @@ fn line<'a>(state: &'a State, row: &Row, expanded: Option<&FolderId>, width: usi
         Row::Folder(f) => {
             let view = &state.folders[*f];
             let open = expanded == Some(&view.folder.id);
+            // The path last: it's the longest, and the least looked for.
+            let global = view
+                .global
+                .map(|global| format!("  {}", global_state(global)));
             Line::from(vec![
                 Span::raw(if open { "▾ " } else { "▸ " }).blue(),
                 Span::raw(view.folder.label_or_id()).bold(),
                 Span::raw(format!("  {}", view.folder.id)).dim(),
-                Span::raw(format!("  {}", view.folder.path)).blue(),
                 Span::raw("  "),
                 folder_state(&view.state),
+                Span::raw(global.unwrap_or_default()).dim(),
+                Span::raw(format!("  {}", view.folder.path)).blue(),
             ])
         }
         Row::Device { folder, device } => {
@@ -324,6 +329,20 @@ fn folder_state(state: &FolderState) -> Span<'static> {
     }
 }
 
+/// What a folder holds once in sync: e.g. "3.4 GiB, 1205 files, 87 directories".
+fn global_state(global: GlobalState) -> String {
+    format!(
+        "{}, {}, {}",
+        size(global.bytes),
+        counted(global.files, "file", "files"),
+        counted(global.directories, "directory", "directories")
+    )
+}
+
+fn counted(count: u64, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+
 /// How far a device has synced the folder.
 fn progress(progress: &DeviceProgress) -> Span<'static> {
     match progress {
@@ -361,6 +380,17 @@ fn size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_global_state_counts_in_words() {
+        let global = GlobalState {
+            files: 1,
+            directories: 0,
+            bytes: 1536,
+        };
+        assert_eq!(global_state(global), "1.5 KiB, 1 file, 0 directories");
+        assert_eq!(counted(2, "file", "files"), "2 files");
+    }
 
     #[test]
     fn sizes_use_binary_units() {

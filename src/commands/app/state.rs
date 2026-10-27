@@ -61,10 +61,21 @@ pub enum DeviceProgress {
 pub struct FolderView {
     pub folder: api::config::Folder<Local>,
     pub state: FolderState,
+    /// None if its status can't be read.
+    pub global: Option<GlobalState>,
     /// The devices it's shared with, this one excepted.
     pub devices: Vec<DeviceRow>,
     /// The hub's other devices it isn't shared with.
     pub candidates: Vec<DeviceId>,
+}
+
+/// A folder's newest version, any device's: what it holds once in sync - as
+/// Syncthing's web UI shows it, "Global State".
+#[derive(Clone, Copy)]
+pub struct GlobalState {
+    pub files: u64,
+    pub directories: u64,
+    pub bytes: u64,
 }
 
 /// Where a folder of this device is at.

@@ -14,6 +14,14 @@ pub struct FolderStatus {
     #[serde(default)]
     pub error: String,
     pub local_files: u64,
+    /// The newest version of the folder any device has: what it holds once
+    /// in sync.
+    #[serde(default)]
+    pub global_files: u64,
+    #[serde(default)]
+    pub global_directories: u64,
+    #[serde(default)]
+    pub global_bytes: u64,
     #[serde(default)]
     pub need_files: u64,
     #[serde(default)]

@@ -6,7 +6,8 @@ use anyhow::Result;
 use itertools::Itertools;
 
 use super::{
-    DeviceProgress, DeviceRow, FolderState, FolderView, HubApi, HubInfo, State, SyncthingInfo,
+    DeviceProgress, DeviceRow, FolderState, FolderView, GlobalState, HubApi, HubInfo, State,
+    SyncthingInfo,
 };
 use crate::api;
 use crate::client::{self, Client, HubClient};
@@ -154,6 +155,8 @@ fn folder_view(
     others: &[DeviceId],
 ) -> FolderView {
     step!(Local, "reading {}'s sync status", folder.name());
+    let status = local.status(&folder.id);
+    let global = status.as_ref().ok().map(global_state);
     // A copy the hub no longer shares with this device: its device list doesn't apply here.
     let left_behind = hub.is_some_and(|(f, _)| !f.shared_with_device(my_id));
     // The hub decides who sees a folder; this device's own list lags behind
@@ -184,6 +187,7 @@ fn folder_view(
         return FolderView {
             folder,
             state: FolderState::LeftBehind,
+            global,
             devices,
             candidates: Vec::new(),
         };
@@ -194,18 +198,22 @@ fn folder_view(
         .cloned()
         .collect();
     FolderView {
-        state: folder_state(local, &folder),
+        state: folder_state(&folder, status),
+        global,
         folder,
         devices,
         candidates,
     }
 }
 
-fn folder_state(local: &Client<Local>, folder: &api::config::Folder<Local>) -> FolderState {
+fn folder_state(
+    folder: &api::config::Folder<Local>,
+    status: Result<api::db::FolderStatus>,
+) -> FolderState {
     if folder.paused {
         return FolderState::Paused;
     }
-    match local.status(&folder.id) {
+    match status {
         Ok(status) if status.state == "error" => FolderState::Error(status.error),
         Ok(status) if status.need_files > 0 => FolderState::Behind {
             state: status.state,
@@ -215,6 +223,14 @@ fn folder_state(local: &Client<Local>, folder: &api::config::Folder<Local>) -> F
         Ok(status) if status.state == "idle" => FolderState::InSync,
         Ok(status) => FolderState::Busy(status.state),
         Err(err) => FolderState::Unknown(format!("{err:#}")),
+    }
+}
+
+fn global_state(status: &api::db::FolderStatus) -> GlobalState {
+    GlobalState {
+        files: status.global_files,
+        directories: status.global_directories,
+        bytes: status.global_bytes,
     }
 }
 

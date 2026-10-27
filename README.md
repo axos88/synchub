@@ -253,8 +253,9 @@ its web UI draws for it, name, device ID, address and Syncthing version (and
 for this device, synchub's), and
 for the hub whether its API is reachable and whether this device is connected
 to it - and below them every folder here, with its state (in sync, syncing,
-scanning, ...) and, for each device it's shared with, whether that device is
-connected and how far it has synced. The hub's shares this device doesn't have
+scanning, ...), what it holds once in sync - its size, files and directories,
+Syncthing's "Global State" - and its directory, and, for each device it's
+shared with, whether that device is connected and how far it has synced. The hub's shares this device doesn't have
 are listed at the end.
 
 The highlighted folder opens up: under its devices it lists the hub's other
