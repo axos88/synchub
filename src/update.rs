@@ -1,11 +1,13 @@
 //! synchub updating itself. A release build checks GitHub's `latest` release
-//! when it starts; if that was built from another commit, it downloads its own
+//! when it starts; if that was built from another commit, it asks - the app
+//! with a dialog, a command on the terminal - and if it may, downloads its own
 //! platform's binary, checks it against the digest GitHub publishes, puts it
 //! in its own place, and runs it instead - with the same arguments. A local
 //! build (`cargo install`) never does.
 
 use std::env;
 use std::fs;
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -13,6 +15,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
+use crate::prompt;
 use crate::settings;
 use crate::version;
 use crate::{step, warn};
@@ -34,27 +37,39 @@ struct Release {
 #[derive(Deserialize)]
 struct Asset {
     name: String,
-    browser_download_url: String,
+    /// Its address in the API: new each time the release is made, so no
+    /// cache serves a previous one - the download address, by name, can.
+    url: String,
     /// `sha256:<hex>`.
     digest: Option<String>,
 }
 
-/// Updates synchub if the latest release was built from another commit, and
-/// runs that one instead, not returning. If anything goes wrong, it says so,
-/// and this one goes on.
-pub fn update() {
-    if env::var_os(UPDATED).is_some() {
-        remove_previous();
-        return;
-    }
-    if let Err(err) = try_update() {
-        warn!("synchub wasn't updated: {err:#}");
-    }
+/// A newer release than this build, ready to be installed.
+pub struct Update {
+    http: reqwest::blocking::Client,
+    /// The release's short commit.
+    to: String,
+    asset: Asset,
 }
 
-fn try_update() -> Result<()> {
+/// The newer release, if there's one: for a release build whose commit isn't
+/// the latest release's. None for a local build; for the binary an update
+/// just started (which deletes what it replaced); and when GitHub can't say,
+/// which it warns about. A dry run only says it would update.
+pub fn available() -> Option<Update> {
+    if env::var_os(UPDATED).is_some() {
+        remove_previous();
+        return None;
+    }
+    check().unwrap_or_else(|err| {
+        warn!("can't tell whether synchub is up to date: {err:#}");
+        None
+    })
+}
+
+fn check() -> Result<Option<Update>> {
     let (Some(commit), Some(asset_name)) = (version::COMMIT, version::ASSET) else {
-        return Ok(());
+        return Ok(None);
     };
     let http = reqwest::blocking::Client::builder()
         .user_agent(concat!("synchub/", env!("SYNCHUB_VERSION")))
@@ -62,37 +77,80 @@ fn try_update() -> Result<()> {
         .build()?;
     let release: Release = http.get(RELEASE).send()?.error_for_status()?.json()?;
     if release.target_commitish == commit {
-        return Ok(());
+        return Ok(None);
+    }
+    let to = release.target_commitish[..release.target_commitish.len().min(7)].to_string();
+    if settings::dry_run() {
+        step!("would update synchub to {to}");
+        return Ok(None);
     }
     let asset = release
         .assets
-        .iter()
+        .into_iter()
         .find(|asset| asset.name == asset_name)
         .with_context(|| format!("the latest release has no {asset_name}"))?;
-    let short = &release.target_commitish[..release.target_commitish.len().min(7)];
-    if settings::dry_run() {
-        step!("would update synchub to {short}");
-        return Ok(());
+    Ok(Some(Update { http, to, asset }))
+}
+
+/// Asks on the terminal whether to install `update`, and does if so. With
+/// nobody to ask - not on a terminal, e.g. in a script - it stays as it is.
+pub fn offer(update: Update) {
+    if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
+        return;
     }
-    let exe = env::current_exe().context("can't tell where synchub is")?;
-    // Before downloading: a binary that can't be replaced isn't worth
-    // fetching on every start.
-    let new = beside(&exe, "new");
-    fs::write(&new, b"").with_context(|| format!("can't write {}", new.display()))?;
-    step!("updating synchub to {short}: downloading {}", asset.name);
-    let installed = download(&http, asset, &new).and_then(|()| install(&exe, &new));
-    if installed.is_err() {
-        let _ = fs::remove_file(&new);
+    let question = format!(
+        "synchub {} is out; this is {}. Update now?",
+        update.to,
+        version::VERSION
+    );
+    match prompt::confirm(&question) {
+        Ok(Some(true)) => update.install(),
+        Ok(_) => {}
+        Err(err) => warn!("can't ask whether to update synchub: {err:#}"),
     }
-    installed?;
-    step!("updated synchub to {short}; running it");
-    restart(&exe)
+}
+
+impl Update {
+    /// The release's short commit.
+    pub fn to(&self) -> &str {
+        &self.to
+    }
+
+    /// Downloads it, moves it into place and runs it instead, with the same
+    /// arguments - not returning. If anything goes wrong, it says so, and
+    /// returns: this one goes on.
+    pub fn install(self) {
+        if let Err(err) = self.try_install() {
+            warn!("synchub wasn't updated: {err:#}");
+        }
+    }
+
+    fn try_install(self) -> Result<()> {
+        let exe = env::current_exe().context("can't tell where synchub is")?;
+        // Before downloading: a binary that can't be replaced isn't worth
+        // fetching.
+        let new = beside(&exe, "new");
+        fs::write(&new, b"").with_context(|| format!("can't write {}", new.display()))?;
+        step!(
+            "updating synchub to {}: downloading {}",
+            self.to,
+            self.asset.name
+        );
+        let installed = download(&self.http, &self.asset, &new).and_then(|()| install(&exe, &new));
+        if installed.is_err() {
+            let _ = fs::remove_file(&new);
+        }
+        installed?;
+        step!("updated synchub to {}; running it", self.to);
+        restart(&exe)
+    }
 }
 
 /// Downloads `asset` into `file`, checked against its digest.
 fn download(http: &reqwest::blocking::Client, asset: &Asset, file: &Path) -> Result<()> {
     let binary = http
-        .get(&asset.browser_download_url)
+        .get(&asset.url)
+        .header(reqwest::header::ACCEPT, "application/octet-stream")
         .timeout(Duration::from_secs(300))
         .send()?
         .error_for_status()?

@@ -159,12 +159,14 @@ Or build it: `cargo install --git https://github.com/axos88/synchub`.
 
 The downloaded binaries keep themselves up to date. Every time synchub starts,
 it asks GitHub which commit the `latest` release was built from; if it's not
-the one it was built from, it downloads its platform's binary, checks it
-against the SHA-256 digest GitHub publishes, puts it in its own place, and
-runs it instead - with the same command. It needs to be able to write its own
-file: where it can't, or GitHub can't be reached, it says so and carries on as
-it is. `--no-update` or `SYNCHUB_NO_UPDATE=1` turns it off; a binary you built
-yourself never updates itself.
+the one it was built from, it asks you whether to update - the app with a
+dialog, a command on the terminal (without a terminal, e.g. in a script, it
+doesn't ask, and doesn't update). If you say yes, it downloads its platform's
+binary, checks it against the SHA-256 digest GitHub publishes, puts it in its
+own place, and runs it instead - with the same command. It needs to be able to
+write its own file: where it can't, or GitHub can't be reached, it says so and
+carries on as it is. `--no-update` or `SYNCHUB_NO_UPDATE=1` turns the check
+off; a binary you built yourself never updates itself.
 
 `synchub --version` says which build it is: `git describe`'s version - the
 latest tag, how many commits it's ahead, and the commit (`v0.2.0-3-gabc1234`),

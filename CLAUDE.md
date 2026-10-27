@@ -415,11 +415,18 @@ introduction accurate as the hub logic evolves.
   the rest. CI passes all three in the environment (`build.yml`'s "Say which build it is" step,
   with the full history for the tags), and `Cross.toml` passes them into cross's containers.
   `--version` and the app's "This device" panel show `VERSION`.
-- Self-update (`src/update.rs`, from `main` before anything else, unless `--no-update` /
-  `SYNCHUB_NO_UPDATE` - clap's `FalseyValueParser`, so `1`/`yes` work): GitHub's API for the
-  `latest` release (unauthenticated: 60 requests an hour per IP; 5 s timeout); if its
-  `target_commitish` isn't `COMMIT`, the asset named `ASSET` is downloaded and checked against
-  the asset's `digest` (`sha256:…`, refused without one), written beside the binary
+- Self-update (`src/update.rs`; `main` checks before the command runs, unless `--no-update` /
+  `SYNCHUB_NO_UPDATE` - clap's `FalseyValueParser`, so `1`/`yes` work): `update::available()`
+  asks GitHub's API about the `latest` release (unauthenticated: 60 requests an hour per IP;
+  5 s timeout); if its `target_commitish` isn't `COMMIT`, it's an `Update`, and the user is
+  asked first (Ákos, 2026-10-27): the app with a confirm dialog before anything loads, in the
+  same full screen (`app::run`; it leaves the full screen only to install), a command with the
+  y/n prompt - and only when stdin and stdout are terminals: a script isn't asked, and isn't
+  updated. `Update::install` downloads the asset named `ASSET` through its API address
+  (`releases/assets/<id>`, `Accept: application/octet-stream`) - not `browser_download_url`,
+  which is by name and was served stale right after the release was made again (verified: the
+  previous binary came back; the digest check refused it) - and checks it against the asset's
+  `digest` (`sha256:…`, refused without one), written beside the binary
   (`synchub.new` - created before downloading, so a binary it can't replace doesn't download on
   every start) and only then moved into place; Unix renames it over the binary and `exec`s it
   with the same arguments; Windows (which can't overwrite a running `.exe`, but can rename it)

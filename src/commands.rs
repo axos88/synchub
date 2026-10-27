@@ -43,7 +43,7 @@ pub enum Command {
 
 pub fn run(command: Command) -> Result<()> {
     match command {
-        Command::App(args) => app::run(args),
+        Command::App(args) => app::run(args, None),
         Command::Join(args) => join::run(args),
         Command::Convert(args) => convert::run(args),
         Command::List(args) => list::run(args),

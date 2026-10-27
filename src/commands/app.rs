@@ -16,6 +16,9 @@ mod window;
 use anyhow::{Result, bail};
 
 use crate::commands::Arguments;
+use crate::update::Update;
+use crate::version;
+use components::dialog::{self, Dialog};
 use components::tree::Tree;
 use state::{Log, State};
 use window::RunnableWindow;
@@ -37,20 +40,52 @@ impl Arguments for Args {
     }
 }
 
-pub fn run(_args: Args) -> Result<()> {
+/// Runs the app - asking first whether to install `update`, a newer release.
+pub fn run(_args: Args, update: Option<Update>) -> Result<()> {
     if !terminal::interactive() {
         bail!("not a terminal; see `synchub --help` for the commands");
     }
-    // The loading dialog, the join form and the main page, without leaving
-    // the full screen in between.
-    window::full_screen(|| {
+    // The question, the loading dialog, the join form and the main page,
+    // without leaving the full screen in between - but to update.
+    let updating = window::full_screen(|| {
         let mut app = App::new();
+        if let Some(update) = &update
+            && ask_to_update(&app, update)?
+        {
+            return Ok(true);
+        }
         app.reload("Loading this device and the hub")?;
         if app.state()?.hub.is_none() {
             app.join()?;
         }
-        app.run()
-    })
+        app.run()?;
+        Ok(false)
+    })?;
+    match update {
+        // Installing it runs the new one instead; it returns if that failed.
+        Some(update) if updating => {
+            update.install();
+            run(Args::default(), None)
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Asks whether to install `update` now, before anything loads.
+fn ask_to_update(app: &App, update: &Update) -> Result<bool> {
+    let lines = [format!(
+        "This is synchub {}; the latest release is {}.",
+        version::VERSION,
+        update.to()
+    )];
+    let confirm = dialog::confirm(
+        "Update synchub",
+        &lines,
+        "Update now? synchub then starts again, as the new version.",
+        "Update",
+        "Not now",
+    );
+    confirm.popup(app)
 }
 
 /// The app, on its main page; the other pages are brought up from it.

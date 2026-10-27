@@ -57,14 +57,23 @@ fn main() -> ExitCode {
         cli.config.unwrap_or_else(settings::default_path),
         cli.dry_run,
     );
-    if !cli.no_update {
-        update::update();
-    }
     client::local::init(cli.connection);
     let command = cli
         .command
         .unwrap_or(commands::Command::App(Default::default()));
-    let result = commands::run(command);
+    let update = if cli.no_update {
+        None
+    } else {
+        update::available()
+    };
+    let result = match (command, update) {
+        // The app asks with a dialog of its own.
+        (commands::Command::App(args), update) => commands::app::run(args, update),
+        (command, update) => {
+            update.into_iter().for_each(update::offer);
+            commands::run(command)
+        }
+    };
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
